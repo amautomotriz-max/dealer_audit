@@ -101,7 +101,7 @@ if os.path.exists("asiauto_logo.png"):
 st.sidebar.markdown("""
     <div style='text-align: center; margin-bottom: 20px;'>
         <h4 style='color: #005ca9; font-weight: bold; margin-bottom: 0px; margin-top: 10px;'>SOPORTE TÉCNICO</h4>
-        <h3 style='color: #000000; font-weight: bold; margin-top: 5px;'>AUDITORÍA 5S & VORD</h3>
+        <h3 style='color: #000000; font-weight: bold; margin-top: 5px;'>AUDITORÍA Y VISITA TÉCNICA</h3>
     </div>
 """, unsafe_allow_html=True)
 
