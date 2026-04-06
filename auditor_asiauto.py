@@ -9,7 +9,7 @@ import os
 # ==========================================
 # 1. CONFIGURATION & STYLES
 # ==========================================
-st.set_page_config(page_title="Auditoría Integral VORD & 5S", layout="wide", page_icon="🛡️")
+st.set_page_config(page_title="Auditoría y Visita Técnica", layout="wide", page_icon="🛡️")
 
 # Custom CSS for high-density UI and badges
 st.markdown("""
