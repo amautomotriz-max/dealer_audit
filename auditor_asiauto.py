@@ -7,20 +7,41 @@ import string
 import os
 
 # ==========================================
-# 1. CONFIGURATION & STYLES
+# 1. CONFIGURATION & STYLES (COMPACT UI UPDATE)
 # ==========================================
 st.set_page_config(page_title="Auditoría y Visita Técnica", layout="wide", page_icon="🛡️")
 
-# Custom CSS for high-density UI and badges
+# Custom CSS for Compact, App-like UI
 st.markdown("""
     <style>
-    .metric-card {background-color: #ffffff; padding: 15px; border-radius: 8px; border: 1px solid #dee2e6; box-shadow: 0 2px 4px rgba(0,0,0,0.05);}
+    /* Global Font Size Reduction */
+    html, body, [class*="st-"] {
+        font-size: 14px !important;
+    }
+    
+    /* Shrink Headers */
+    h1 { font-size: 1.7rem !important; padding-bottom: 0.2rem !important; margin-bottom: 0.2rem !important; }
+    h2 { font-size: 1.4rem !important; padding-bottom: 0.2rem !important; }
+    h3 { font-size: 1.15rem !important; padding-bottom: 0.2rem !important; }
+    
+    /* Compact Badges & Cards */
+    .metric-card {background-color: #ffffff; padding: 10px; border-radius: 8px; border: 1px solid #dee2e6; box-shadow: 0 2px 4px rgba(0,0,0,0.05);}
     .pass-text {color: #28a745; font-weight: bold;}
     .fail-text {color: #dc3545; font-weight: bold;}
-    .cat-badge {padding: 3px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: bold; background-color: #e9ecef; color: #1e2b3c; border: 1px solid #ccc; display: inline-block;}
-    hr.slim {margin: 12px 0; border: 0; border-top: 1px solid #eee;}
-    /* Compact radio buttons */
+    .cat-badge {padding: 2px 6px; border-radius: 8px; font-size: 0.7rem; font-weight: bold; background-color: #e9ecef; color: #1e2b3c; border: 1px solid #ccc; display: inline-block;}
+    hr.slim {margin: 8px 0; border: 0; border-top: 1px solid #eee;}
+    
+    /* Tighter spacing for blocks and forms */
     div[data-testid="stHorizontalBlock"] { gap: 0.5rem; }
+    div[data-testid="stForm"] { padding: 1rem !important; }
+    div[data-testid="stVerticalBlock"] { gap: 0.5rem !important; }
+    
+    /* Mobile specific tweaks (even smaller for phone screens) */
+    @media (max-width: 480px) {
+        html, body, [class*="st-"] { font-size: 13px !important; }
+        h1 { font-size: 1.5rem !important; }
+        .stButton button { padding: 0.2rem 0.5rem !important; }
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -83,7 +104,7 @@ def logout():
     st.rerun()
 
 if not st.session_state['logged_in']:
-    st.title("🔐 Acceso al Sistema de Auditoría KIA / ASIAUTO")
+    st.title("🔐 Acceso al Sistema")
     with st.form("login_form"):
         user_input = st.text_input("Usuario")
         pass_input = st.text_input("Contraseña", type="password")
@@ -155,7 +176,7 @@ if menu == "📊 Dashboard Global":
     c1, c2, c3 = st.columns(3)
     c1.metric("Auditorías Ejecutadas", total_audits)
     c2.metric("Promedio Cumplimiento", f"{avg_score:.1f}%")
-    c3.metric("Planes de Acción Abiertos (Red)", len(open_plans))
+    c3.metric("Planes de Acción Abiertos", len(open_plans))
 
     st.divider()
     st.subheader("Cumplimiento por Categoría")
@@ -238,7 +259,7 @@ elif menu == "📋 Operaciones (Visión Red)":
             if ag_users:
                 df_ag = pd.DataFrame([{"Agencia": u['audit_agencies']['name'] if u['audit_agencies'] else "N/A", "Marca": u['audit_agencies']['brand'] if u['audit_agencies'] else "N/A", "Usuario": u['username'], "PIN": u['password_hash']} for u in ag_users])
                 st.dataframe(df_ag, use_container_width=True)
-                st.download_button("📥 Descargar CSV Agencias", df_ag.to_csv(index=False), "directorio_agencias.csv", "text/csv")
+                st.download_button("📥 Descargar CSV", df_ag.to_csv(index=False), "directorio_agencias.csv", "text/csv")
         
         with col_dir2:
             st.markdown("#### 🕵️ Auditores")
@@ -246,7 +267,7 @@ elif menu == "📋 Operaciones (Visión Red)":
             if au_users:
                 df_au = pd.DataFrame([{"Usuario": u['username'], "Nombre Real": u.get('full_name') or "No Asignado", "PIN": u['password_hash']} for u in au_users])
                 st.dataframe(df_au, use_container_width=True)
-                st.download_button("📥 Descargar CSV Auditores", df_au.to_csv(index=False), "directorio_auditores.csv", "text/csv")
+                st.download_button("📥 Descargar CSV", df_au.to_csv(index=False), "directorio_auditores.csv", "text/csv")
                 with st.form("rename_auditor"):
                     sel_aud = st.selectbox("Asignar Nombre Real:", [u['username'] for u in au_users])
                     new_n = st.text_input("Nombre Completo")
@@ -309,7 +330,7 @@ elif menu == "📸 Ejecutar Nueva Auditoría":
     # STATE 1: SETUP (BRAND & AGENCY SELECTION)
     # ---------------------------------------------------------
     if not st.session_state['audit_active']:
-        st.info("Por favor, seleccione los datos del concesionario para comenzar.")
+        st.info("Seleccione los datos del concesionario para comenzar.")
         
         c_m1, c_m2 = st.columns([1, 2])
         sel_marca = c_m1.radio("1. Marca:", ["KIA", "ASIAUTO"], horizontal=True)
@@ -337,7 +358,6 @@ elif menu == "📸 Ejecutar Nueva Auditoría":
     # STATE 2: ACTIVE AUDIT EXECUTION
     # ---------------------------------------------------------
     else:
-        # Calculate running time visually
         elapsed = datetime.now() - st.session_state['audit_start_time']
         mins, secs = divmod(elapsed.total_seconds(), 60)
         
@@ -353,7 +373,6 @@ elif menu == "📸 Ejecutar Nueva Auditoría":
         catalog = supabase.table("audit_master_catalog").select("*").order("id").execute().data
         
         with st.form("audit_form"):
-            st.subheader("Matriz de Evaluación")
             results, comments, photos = {}, {}, {}
             
             for item in catalog:
@@ -361,9 +380,7 @@ elif menu == "📸 Ejecutar Nueva Auditoría":
                 cq.markdown(f"**[{item['item_code']}] <span class='cat-badge'>{item['category']}</span>** - {item['audit_question']}", unsafe_allow_html=True)
                 results[item['id']] = cr.radio("Res", ["PASA", "NO PASA"], key=f"res_{item['id']}", horizontal=True, label_visibility="collapsed")
                 
-                comments[item['id']] = st.text_input("Com", key=f"com_{item['id']}", placeholder="Comentario del Auditor (Obligatorio si NO PASA)", label_visibility="collapsed")
-                
-                # STRICT SINGLE FILE UPLOAD
+                comments[item['id']] = st.text_input("Com", key=f"com_{item['id']}", placeholder="Comentario (Obligatorio si NO PASA)", label_visibility="collapsed")
                 photos[item['id']] = st.file_uploader("Subir Evidencia", type=['jpg', 'jpeg', 'png'], key=f"pic_{item['id']}", label_visibility="collapsed", accept_multiple_files=False)
                 
                 st.markdown("<hr class='slim'>", unsafe_allow_html=True)
