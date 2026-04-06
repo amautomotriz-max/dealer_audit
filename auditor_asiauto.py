@@ -4,6 +4,7 @@ from supabase import create_client, Client
 from datetime import datetime
 import random
 import string
+import os
 
 # ==========================================
 # 1. CONFIGURATION & STYLES
@@ -91,12 +92,23 @@ if not st.session_state['logged_in']:
     st.stop()
 
 # ==========================================
-# 4. DYNAMIC SIDEBAR NAVIGATION
+# 4. DYNAMIC SIDEBAR NAVIGATION & THEMING
 # ==========================================
+# Custom ASIAUTO Theme Implementation
+if os.path.exists("asiauto_logo.png"):
+    st.sidebar.image("asiauto_logo.png", use_container_width=True)
+
+st.sidebar.markdown("""
+    <div style='text-align: center; margin-bottom: 20px;'>
+        <h4 style='color: #005ca9; font-weight: bold; margin-bottom: 0px; margin-top: 10px;'>SOPORTE TÉCNICO</h4>
+        <h3 style='color: #000000; font-weight: bold; margin-top: 5px;'>AUDITORÍA 5S & VORD</h3>
+    </div>
+""", unsafe_allow_html=True)
+
 display_name = st.session_state['full_name'] if st.session_state['full_name'] else st.session_state['username']
-st.sidebar.title(f"👤 {display_name}")
-st.sidebar.caption(f"Perfil: {st.session_state['role'].upper()}")
-if st.sidebar.button("Cerrar Sesión"):
+st.sidebar.markdown(f"👤 **Usuario:** {display_name}")
+st.sidebar.caption(f"**Perfil:** {st.session_state['role'].upper()}")
+if st.sidebar.button("Cerrar Sesión", use_container_width=True):
     logout()
 st.sidebar.divider()
 
@@ -351,14 +363,13 @@ elif menu == "📸 Ejecutar Nueva Auditoría":
                 
                 comments[item['id']] = st.text_input("Com", key=f"com_{item['id']}", placeholder="Comentario del Auditor (Obligatorio si NO PASA)", label_visibility="collapsed")
                 
-                # STRICT SINGLE FILE UPLOAD: accept_multiple_files=False forces one file only.
+                # STRICT SINGLE FILE UPLOAD
                 photos[item['id']] = st.file_uploader("Subir Evidencia", type=['jpg', 'jpeg', 'png'], key=f"pic_{item['id']}", label_visibility="collapsed", accept_multiple_files=False)
                 
                 st.markdown("<hr class='slim'>", unsafe_allow_html=True)
                 
             if st.form_submit_button("🏁 Finalizar y Guardar Auditoría", type="primary"):
                 with st.spinner('Procesando datos y subiendo imágenes a la nube...'):
-                    # Final duration calculation
                     final_duration_sec = int((datetime.now() - st.session_state['audit_start_time']).total_seconds())
                     score = (sum(1 for r in results.values() if r == "PASA") / len(catalog)) * 100 if catalog else 0
                     
@@ -401,7 +412,6 @@ elif menu == "📸 Ejecutar Nueva Auditoría":
                                 "record_id": rec_resp.data[0]['id'], "failure_description": comments[cid] or "Falla documentada."
                             }).execute()
                     
-                    # Reset the session state so they can do a new audit
                     st.session_state['audit_active'] = False
                     
                     st.success(f"¡Guardado exitosamente! Puntaje Final: {score:.1f}% | Tiempo: {int(final_duration_sec // 60)} min")
