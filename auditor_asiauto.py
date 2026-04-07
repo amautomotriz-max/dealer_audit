@@ -1,19 +1,18 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
 from supabase import create_client, Client
 from datetime import datetime
 import random
 import string
 import os
+import plotly.express as px
+import plotly.graph_objects as go
 
 # ==========================================
-# 1. CONFIGURATION & STYLES (COMPACT UI UPDATE)
+# 1. CONFIGURATION & STYLES (COMPACT UI)
 # ==========================================
 st.set_page_config(page_title="Auditoría y Visita Técnica", layout="wide", page_icon="🛡️")
 
-# Custom CSS for Compact, App-like UI
 st.markdown("""
     <style>
     /* Global Font Size Reduction */
@@ -38,7 +37,7 @@ st.markdown("""
     div[data-testid="stForm"] { padding: 1rem !important; }
     div[data-testid="stVerticalBlock"] { gap: 0.5rem !important; }
     
-    /* Mobile specific tweaks (even smaller for phone screens) */
+    /* Mobile specific tweaks */
     @media (max-width: 480px) {
         html, body, [class*="st-"] { font-size: 13px !important; }
         h1 { font-size: 1.5rem !important; }
@@ -72,7 +71,6 @@ if 'logged_in' not in st.session_state:
         'role': None, 
         'agency_id': None, 
         'agency_name': None,
-        # Audit execution states
         'audit_active': False,
         'audit_marca': None,
         'audit_ag_id': None,
@@ -117,7 +115,6 @@ if not st.session_state['logged_in']:
 # ==========================================
 # 4. DYNAMIC SIDEBAR NAVIGATION & THEMING
 # ==========================================
-# Custom ASIAUTO Theme Implementation
 if os.path.exists("asiauto_logo.png"):
     st.sidebar.image("asiauto_logo.png", use_container_width=True)
 
@@ -144,7 +141,7 @@ elif st.session_state['role'] == 'auditor':
 elif st.session_state['role'] == 'agency':
     st.sidebar.header(f"Agencia: {st.session_state['agency_name']}")
     menu = st.sidebar.radio("Navegación:", ["📑 Mi Última Auditoría", "🛠️ Mis Planes de Acción"])
-    
+
 # ==========================================
 # 5. VIEWS: SUPER ADMIN
 # ==========================================
@@ -189,7 +186,6 @@ if menu == "📊 Dashboard Global":
         
         with col_chart1:
             st.markdown("#### Score Global")
-            # Executive Gauge Chart
             fig_gauge = go.Figure(go.Indicator(
                 mode = "gauge+number",
                 value = avg_score,
@@ -199,9 +195,9 @@ if menu == "📊 Dashboard Global":
                     'axis': {'range': [0, 100], 'tickwidth': 1},
                     'bar': {'color': "#005ca9"},
                     'steps': [
-                        {'range': [0, 70], 'color': "#ffe6e6"},   # Red zone
-                        {'range': [70, 85], 'color': "#fff0cc"},  # Yellow zone
-                        {'range': [85, 100], 'color': "#e6ffe6"}  # Green zone
+                        {'range': [0, 70], 'color': "#ffe6e6"},
+                        {'range': [70, 85], 'color': "#fff0cc"},
+                        {'range': [85, 100], 'color': "#e6ffe6"}
                     ],
                     'threshold': {'line': {'color': "red", 'width': 4}, 'thickness': 0.75, 'value': 85}
                 }
@@ -210,8 +206,7 @@ if menu == "📊 Dashboard Global":
             st.plotly_chart(fig_gauge, use_container_width=True)
 
         with col_chart2:
-            st.markdown("#### Evolución de Cumplimiento (Últimas Visitas)")
-            # Trend Line Chart
+            st.markdown("#### Evolución de Cumplimiento")
             df_sessions = pd.DataFrame(sessions)
             df_sessions['fecha'] = pd.to_datetime(df_sessions['audit_date']).dt.strftime('%Y-%m-%d')
             trend_data = df_sessions.groupby('fecha')['final_score_percentage'].mean().reset_index()
@@ -219,7 +214,7 @@ if menu == "📊 Dashboard Global":
             
             fig_trend = px.line(trend_data, x='fecha', y='final_score_percentage', markers=True)
             fig_trend.update_traces(line_color='#005ca9', marker=dict(size=8))
-            fig_trend.update_layout(height=300, margin=dict(l=20, r=20, t=30, b=20), yaxis_title="Puntaje Promedio (%)", xaxis_title="")
+            fig_trend.update_layout(height=300, margin=dict(l=20, r=20, t=30, b=20), yaxis_title="Score (%)", xaxis_title="")
             fig_trend.update_yaxes(range=[0, 105])
             st.plotly_chart(fig_trend, use_container_width=True)
 
@@ -235,16 +230,13 @@ if menu == "📊 Dashboard Global":
             resumen = df_rec.groupby('Categoria').sum().reset_index()
             resumen['Cumplimiento'] = (resumen['Pass'] / resumen['Total'] * 100).round(1)
             
-            # Sort to show worst performing at the top for management focus
             resumen = resumen.sort_values('Cumplimiento', ascending=True)
             
             fig_bar = px.bar(resumen, x='Cumplimiento', y='Categoria', orientation='h', text='Cumplimiento', color='Cumplimiento', color_continuous_scale='Blues')
             fig_bar.update_traces(texttemplate='%{text}%', textposition='outside')
-            fig_bar.update_layout(height=350, margin=dict(l=20, r=20, t=20, b=20), xaxis_title="Porcentaje de Cumplimiento (%)", yaxis_title="")
-            fig_bar.update_xaxes(range=[0, 115]) # Extra space for the text labels
+            fig_bar.update_layout(height=350, margin=dict(l=20, r=20, t=20, b=20), xaxis_title="Cumplimiento (%)", yaxis_title="")
+            fig_bar.update_xaxes(range=[0, 115])
             st.plotly_chart(fig_bar, use_container_width=True)
-
-# ... (Keep the "Operaciones (Visión Red)" section and everything below exactly the same) ...
 
 elif menu == "📋 Operaciones (Visión Red)":
     st.title("📋 Gestión de Operaciones")
@@ -379,9 +371,6 @@ elif menu == "🚨 Validar Correcciones":
 elif menu == "📸 Ejecutar Nueva Auditoría":
     st.title("📸 Nueva Auditoría")
     
-    # ---------------------------------------------------------
-    # STATE 1: SETUP (BRAND & AGENCY SELECTION)
-    # ---------------------------------------------------------
     if not st.session_state['audit_active']:
         st.info("Seleccione los datos del concesionario para comenzar.")
         
@@ -407,9 +396,6 @@ elif menu == "📸 Ejecutar Nueva Auditoría":
             st.session_state['audit_start_time'] = datetime.now()
             st.rerun()
 
-    # ---------------------------------------------------------
-    # STATE 2: ACTIVE AUDIT EXECUTION
-    # ---------------------------------------------------------
     else:
         elapsed = datetime.now() - st.session_state['audit_start_time']
         mins, secs = divmod(elapsed.total_seconds(), 60)
