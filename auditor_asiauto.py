@@ -1,5 +1,7 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
 from supabase import create_client, Client
 from datetime import datetime
 import random
@@ -142,7 +144,7 @@ elif st.session_state['role'] == 'auditor':
 elif st.session_state['role'] == 'agency':
     st.sidebar.header(f"Agencia: {st.session_state['agency_name']}")
     menu = st.sidebar.radio("Navegación:", ["📑 Mi Última Auditoría", "🛠️ Mis Planes de Acción"])
-
+    
 # ==========================================
 # 5. VIEWS: SUPER ADMIN
 # ==========================================
@@ -173,25 +175,76 @@ if menu == "📊 Dashboard Global":
     avg_score = sum([s['final_score_percentage'] for s in sessions]) / total_audits if total_audits > 0 else 0
     open_plans = supabase.table("audit_action_plans").select("id").eq("status", "🔴 ABIERTO").execute().data
 
+    # --- TOP METRICS ROW ---
     c1, c2, c3 = st.columns(3)
     c1.metric("Auditorías Ejecutadas", total_audits)
     c2.metric("Promedio Cumplimiento", f"{avg_score:.1f}%")
     c3.metric("Planes de Acción Abiertos", len(open_plans))
 
-    st.divider()
-    st.subheader("Cumplimiento por Categoría")
+    st.markdown("<hr class='slim'>", unsafe_allow_html=True)
+
     if total_audits > 0:
+        # --- ROW 1: GAUGE & TREND CHARTS ---
+        col_chart1, col_chart2 = st.columns([1, 1.5])
+        
+        with col_chart1:
+            st.markdown("#### Score Global")
+            # Executive Gauge Chart
+            fig_gauge = go.Figure(go.Indicator(
+                mode = "gauge+number",
+                value = avg_score,
+                number = {'suffix': "%"},
+                domain = {'x': [0, 1], 'y': [0, 1]},
+                gauge = {
+                    'axis': {'range': [0, 100], 'tickwidth': 1},
+                    'bar': {'color': "#005ca9"},
+                    'steps': [
+                        {'range': [0, 70], 'color': "#ffe6e6"},   # Red zone
+                        {'range': [70, 85], 'color': "#fff0cc"},  # Yellow zone
+                        {'range': [85, 100], 'color': "#e6ffe6"}  # Green zone
+                    ],
+                    'threshold': {'line': {'color': "red", 'width': 4}, 'thickness': 0.75, 'value': 85}
+                }
+            ))
+            fig_gauge.update_layout(height=300, margin=dict(l=20, r=20, t=30, b=20))
+            st.plotly_chart(fig_gauge, use_container_width=True)
+
+        with col_chart2:
+            st.markdown("#### Evolución de Cumplimiento (Últimas Visitas)")
+            # Trend Line Chart
+            df_sessions = pd.DataFrame(sessions)
+            df_sessions['fecha'] = pd.to_datetime(df_sessions['audit_date']).dt.strftime('%Y-%m-%d')
+            trend_data = df_sessions.groupby('fecha')['final_score_percentage'].mean().reset_index()
+            trend_data = trend_data.sort_values('fecha')
+            
+            fig_trend = px.line(trend_data, x='fecha', y='final_score_percentage', markers=True)
+            fig_trend.update_traces(line_color='#005ca9', marker=dict(size=8))
+            fig_trend.update_layout(height=300, margin=dict(l=20, r=20, t=30, b=20), yaxis_title="Puntaje Promedio (%)", xaxis_title="")
+            fig_trend.update_yaxes(range=[0, 105])
+            st.plotly_chart(fig_trend, use_container_width=True)
+
+        st.markdown("<hr class='slim'>", unsafe_allow_html=True)
+
+        # --- ROW 2: CATEGORY PERFORMANCE BAR CHART ---
+        st.markdown("#### Cumplimiento por Categoría Evaluada")
         session_ids = [s['id'] for s in sessions]
         records = supabase.table("audit_records").select("result_pass, audit_master_catalog!inner(category)").in_("session_id", session_ids).execute().data
+        
         if records:
             df_rec = pd.DataFrame([{'Categoria': r['audit_master_catalog']['category'], 'Pass': 1 if r['result_pass'] else 0, 'Total': 1} for r in records])
             resumen = df_rec.groupby('Categoria').sum().reset_index()
             resumen['Cumplimiento'] = (resumen['Pass'] / resumen['Total'] * 100).round(1)
             
-            cols = st.columns(len(resumen))
-            for i, cat in enumerate(resumen['Categoria']):
-                val = resumen[resumen['Categoria'] == cat]['Cumplimiento'].values[0]
-                cols[i].metric(cat, f"{val}%")
+            # Sort to show worst performing at the top for management focus
+            resumen = resumen.sort_values('Cumplimiento', ascending=True)
+            
+            fig_bar = px.bar(resumen, x='Cumplimiento', y='Categoria', orientation='h', text='Cumplimiento', color='Cumplimiento', color_continuous_scale='Blues')
+            fig_bar.update_traces(texttemplate='%{text}%', textposition='outside')
+            fig_bar.update_layout(height=350, margin=dict(l=20, r=20, t=20, b=20), xaxis_title="Porcentaje de Cumplimiento (%)", yaxis_title="")
+            fig_bar.update_xaxes(range=[0, 115]) # Extra space for the text labels
+            st.plotly_chart(fig_bar, use_container_width=True)
+
+# ... (Keep the "Operaciones (Visión Red)" section and everything below exactly the same) ...
 
 elif menu == "📋 Operaciones (Visión Red)":
     st.title("📋 Gestión de Operaciones")
