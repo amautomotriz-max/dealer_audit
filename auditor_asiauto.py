@@ -175,6 +175,10 @@ if menu == "📊 Dashboard Global":
             trend_data = df_sessions.groupby('fecha')['final_score_percentage'].mean().reset_index().sort_values('fecha')
             fig_trend = px.line(trend_data, x='fecha', y='final_score_percentage', markers=True)
             fig_trend.update_traces(line_color='#005ca9', marker=dict(size=8))
+            
+            # VERSION 1.14 UPDATE: Force x-axis to be categorical to hide time data
+            fig_trend.update_xaxes(type='category') 
+            
             fig_trend.update_layout(height=300, margin=dict(l=20, r=20, t=30, b=20), yaxis_title="Score (%)", xaxis_title="")
             fig_trend.update_yaxes(range=[0, 105])
             st.plotly_chart(fig_trend, use_container_width=True)
@@ -365,10 +369,25 @@ elif menu == "🔍 Detalle por Agencia":
     sel_ag = col_f3.selectbox("Seleccione Agencia:", list(ag_dict.keys()) if ag_dict else ["Sin resultados"])
     
     if sel_ag != "Sin resultados":
-        latest = supabase.table("audit_sessions").select("*").eq("agency_id", ag_dict[sel_ag]).eq("status", "FINALIZADO").order("audit_date", desc=True).limit(1).execute().data
-        if latest:
-            st.metric(f"Score ({latest[0]['marca']})", f"{latest[0]['final_score_percentage']:.1f}%", f"Fecha: {latest[0]['audit_date'][:10]}")
-            records = supabase.table("audit_records").select("*, audit_master_catalog!inner(item_code, audit_question, category)").eq("session_id", latest[0]['id']).execute().data
+        # VERSION 1.14 UPDATE: Replaced the .limit(1) with a history dropdown
+        agency_sessions = supabase.table("audit_sessions").select("*").eq("agency_id", ag_dict[sel_ag]).eq("status", "FINALIZADO").order("audit_date", desc=True).execute().data
+        
+        if agency_sessions:
+            st.divider()
+            
+            # Create dropdown options mapped to the actual session object
+            session_options = {f"🗓️ {s['audit_date'][:10]} - Score: {s['final_score_percentage']:.1f}%": s for s in agency_sessions}
+            
+            col_hist1, col_hist2 = st.columns([1, 2])
+            with col_hist1:
+                sel_session_key = st.selectbox("Seleccione la Auditoría (Historial):", list(session_options.keys()))
+            
+            selected_session = session_options[sel_session_key]
+            
+            st.metric(f"Score ({selected_session['marca']})", f"{selected_session['final_score_percentage']:.1f}%", f"Fecha: {selected_session['audit_date'][:10]}")
+            
+            records = supabase.table("audit_records").select("*, audit_master_catalog!inner(item_code, audit_question, category)").eq("session_id", selected_session['id']).execute().data
+            
             for r in records:
                 icon = "✅" if r['result_pass'] else "❌"
                 st.markdown(f"**[{r['audit_master_catalog']['item_code']}] {r['audit_master_catalog']['audit_question']}** | {icon}")
@@ -498,7 +517,6 @@ elif menu == "📸 Ejecutar Nueva Auditoría":
                     
                     session_info = supabase.table("audit_sessions").select("created_at").eq("id", session_id).execute().data[0]
                     try:
-                        # Parse standard Supabase UTC string to calculate elapsed time robustly
                         clean_time_str = session_info['created_at'].replace('Z', '+00:00').split('.')[0]
                         start_dt = datetime.fromisoformat(clean_time_str).replace(tzinfo=None)
                         dur_sec = int((datetime.utcnow() - start_dt).total_seconds())
