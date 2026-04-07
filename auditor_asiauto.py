@@ -18,9 +18,7 @@ st.set_page_config(page_title="Auditoría y Visita Técnica", layout="wide", pag
 st.markdown("""
     <style>
     /* Global Font Size Reduction */
-    html, body, [class*="st-"] {
-        font-size: 14px !important;
-    }
+    html, body, [class*="st-"] { font-size: 14px !important; }
     
     /* Shrink Headers */
     h1 { font-size: 1.7rem !important; padding-bottom: 0.2rem !important; margin-bottom: 0.2rem !important; }
@@ -170,15 +168,29 @@ if menu == "📊 Dashboard Global":
         query = query.eq("audit_agencies.name", filtro_agencia)
     
     sessions = query.execute().data
+    session_ids = [s['id'] for s in sessions] if sessions else []
+    
     total_audits = len(sessions)
     avg_score = sum([s['final_score_percentage'] for s in sessions]) / total_audits if total_audits > 0 else 0
     open_plans = supabase.table("audit_action_plans").select("id").eq("status", "🔴 ABIERTO").execute().data
 
+    # --- CALCULATE TOTAL STORAGE ---
+    total_mb = 0
+    records = []
+    if session_ids:
+        records = supabase.table("audit_records").select("session_id, result_pass, evidence_size_bytes, audit_master_catalog!inner(category)").in_("session_id", session_ids).execute().data
+        all_plans = supabase.table("audit_action_plans").select("correction_size_bytes").execute().data
+        
+        bytes_records = sum([r.get('evidence_size_bytes') or 0 for r in records])
+        bytes_plans = sum([p.get('correction_size_bytes') or 0 for p in all_plans])
+        total_mb = (bytes_records + bytes_plans) / (1024 * 1024)
+
     # --- TOP METRICS ROW ---
-    c1, c2, c3 = st.columns(3)
+    c1, c2, c3, c4 = st.columns(4)
     c1.metric("Auditorías Ejecutadas", total_audits)
     c2.metric("Promedio Cumplimiento", f"{avg_score:.1f}%")
     c3.metric("Planes de Acción Abiertos", len(open_plans))
+    c4.metric("Almacenamiento (MB)", f"{total_mb:.2f} MB")
 
     st.markdown("<hr class='slim'>", unsafe_allow_html=True)
 
@@ -222,23 +234,42 @@ if menu == "📊 Dashboard Global":
 
         st.markdown("<hr class='slim'>", unsafe_allow_html=True)
 
-        # --- ROW 2: CATEGORY PERFORMANCE BAR CHART ---
-        st.markdown("#### Cumplimiento por Categoría Evaluada")
-        session_ids = [s['id'] for s in sessions]
-        records = supabase.table("audit_records").select("result_pass, audit_master_catalog!inner(category)").in_("session_id", session_ids).execute().data
+        # --- ROW 2: CATEGORIES & STORAGE CHART ---
+        col_bar1, col_bar2 = st.columns(2)
         
-        if records:
-            df_rec = pd.DataFrame([{'Categoria': r['audit_master_catalog']['category'], 'Pass': 1 if r['result_pass'] else 0, 'Total': 1} for r in records])
-            resumen = df_rec.groupby('Categoria').sum().reset_index()
-            resumen['Cumplimiento'] = (resumen['Pass'] / resumen['Total'] * 100).round(1)
-            
-            resumen = resumen.sort_values('Cumplimiento', ascending=True)
-            
-            fig_bar = px.bar(resumen, x='Cumplimiento', y='Categoria', orientation='h', text='Cumplimiento', color='Cumplimiento', color_continuous_scale='Blues')
-            fig_bar.update_traces(texttemplate='%{text}%', textposition='outside')
-            fig_bar.update_layout(height=350, margin=dict(l=20, r=20, t=20, b=20), xaxis_title="Cumplimiento (%)", yaxis_title="")
-            fig_bar.update_xaxes(range=[0, 115])
-            st.plotly_chart(fig_bar, use_container_width=True)
+        with col_bar1:
+            st.markdown("#### Cumplimiento por Categoría")
+            if records:
+                df_rec = pd.DataFrame([{'Categoria': r['audit_master_catalog']['category'], 'Pass': 1 if r['result_pass'] else 0, 'Total': 1} for r in records])
+                resumen = df_rec.groupby('Categoria').sum().reset_index()
+                resumen['Cumplimiento'] = (resumen['Pass'] / resumen['Total'] * 100).round(1)
+                resumen = resumen.sort_values('Cumplimiento', ascending=True)
+                
+                fig_bar = px.bar(resumen, x='Cumplimiento', y='Categoria', orientation='h', text='Cumplimiento', color='Cumplimiento', color_continuous_scale='Blues')
+                fig_bar.update_traces(texttemplate='%{text}%', textposition='outside')
+                fig_bar.update_layout(height=350, margin=dict(l=20, r=20, t=20, b=20), xaxis_title="Cumplimiento (%)", yaxis_title="")
+                fig_bar.update_xaxes(range=[0, 115])
+                st.plotly_chart(fig_bar, use_container_width=True)
+
+        with col_bar2:
+            st.markdown("#### Consumo de Almacenamiento por Auditoría")
+            if records:
+                df_size = pd.DataFrame(records)
+                df_size['evidence_size_bytes'] = df_size['evidence_size_bytes'].fillna(0)
+                
+                # Map session dates to names for the chart
+                session_dict = {s['id']: f"{s['audit_agencies']['name']} ({s['audit_date'][:10]})" for s in sessions}
+                df_size['Auditoria'] = df_size['session_id'].map(session_dict)
+                
+                size_summary = df_size.groupby('Auditoria')['evidence_size_bytes'].sum().reset_index()
+                size_summary['MB'] = (size_summary['evidence_size_bytes'] / (1024 * 1024)).round(2)
+                size_summary = size_summary.sort_values('MB', ascending=False).head(10) # Top 10 heaviest audits
+                
+                fig_size = px.bar(size_summary, x='MB', y='Auditoria', orientation='h', text='MB', color_discrete_sequence=['#ff7f0e'])
+                fig_size.update_traces(texttemplate='%{text} MB', textposition='outside')
+                fig_size.update_layout(height=350, margin=dict(l=20, r=20, t=20, b=20), xaxis_title="Megabytes (MB)", yaxis_title="", yaxis={'categoryorder':'total ascending'})
+                fig_size.update_xaxes(range=[0, size_summary['MB'].max() * 1.2])
+                st.plotly_chart(fig_size, use_container_width=True)
 
 elif menu == "📋 Operaciones (Visión Red)":
     st.title("📋 Gestión de Operaciones")
@@ -445,27 +476,23 @@ elif menu == "📸 Ejecutar Nueva Auditoría":
                         is_pass = (result == "PASA")
                         
                         public_photo_url = None
+                        file_size_bytes = 0
+                        
                         if not is_pass and photos[cid] is not None:
                             file = photos[cid]
                             file_name = f"auditor_{session_id}_item_{cid}_{random.randint(1000,9999)}.jpg"
                             
                             try:
-                                # --- COMPRESSION PIPELINE ---
+                                # Image Compression
                                 image = Image.open(file)
-                                
-                                # Convert to RGB (prevents errors if someone uploads a PNG with transparency)
-                                if image.mode in ("RGBA", "P"):
-                                    image = image.convert("RGB")
-                                
-                                # Resize image to max 1080px to save space, keeping aspect ratio
+                                if image.mode in ("RGBA", "P"): image = image.convert("RGB")
                                 image.thumbnail((1080, 1080), Image.Resampling.LANCZOS)
                                 
-                                # Save the compressed image to a temporary memory buffer
                                 img_byte_arr = io.BytesIO()
                                 image.save(img_byte_arr, format='JPEG', quality=70)
                                 compressed_bytes = img_byte_arr.getvalue()
+                                file_size_bytes = len(compressed_bytes)
                                 
-                                # Upload the compressed bytes instead of the raw file
                                 supabase.storage.from_("audit_evidence").upload(
                                     path=file_name,
                                     file=compressed_bytes,
@@ -477,7 +504,8 @@ elif menu == "📸 Ejecutar Nueva Auditoría":
 
                         rec_resp = supabase.table("audit_records").insert({
                             "session_id": session_id, "catalog_id": cid, "result_pass": is_pass, 
-                            "auditor_comment": comments[cid], "failure_photo_url": public_photo_url
+                            "auditor_comment": comments[cid], "failure_photo_url": public_photo_url,
+                            "evidence_size_bytes": file_size_bytes
                         }).execute()
                         
                         if not is_pass:
@@ -486,7 +514,6 @@ elif menu == "📸 Ejecutar Nueva Auditoría":
                             }).execute()
                     
                     st.session_state['audit_active'] = False
-                    
                     st.success(f"¡Guardado exitosamente! Puntaje Final: {score:.1f}% | Tiempo: {int(final_duration_sec // 60)} min")
                     st.balloons()
 
@@ -532,22 +559,32 @@ elif menu == "🛠️ Mis Planes de Acción":
                         
                         if st.form_submit_button("Subir y Enviar a Validación"):
                             if act and corr_pic is not None:
-                                with st.spinner('Subiendo evidencia...'):
-                                    file_ext = corr_pic.name.split('.')[-1]
-                                    file_name = f"agency_fix_plan_{plan['id']}_{random.randint(1000,9999)}.{file_ext}"
+                                with st.spinner('Comprimiendo y subiendo evidencia...'):
+                                    file_name = f"agency_fix_plan_{plan['id']}_{random.randint(1000,9999)}.jpg"
                                     
                                     try:
+                                        # Image Compression
+                                        image = Image.open(corr_pic)
+                                        if image.mode in ("RGBA", "P"): image = image.convert("RGB")
+                                        image.thumbnail((1080, 1080), Image.Resampling.LANCZOS)
+                                        
+                                        img_byte_arr = io.BytesIO()
+                                        image.save(img_byte_arr, format='JPEG', quality=70)
+                                        compressed_bytes = img_byte_arr.getvalue()
+                                        file_size_bytes = len(compressed_bytes)
+                                        
                                         supabase.storage.from_("audit_evidence").upload(
                                             path=file_name,
-                                            file=corr_pic.getvalue(),
-                                            file_options={"content-type": corr_pic.type}
+                                            file=compressed_bytes,
+                                            file_options={"content-type": "image/jpeg"}
                                         )
                                         pic_url = supabase.storage.from_("audit_evidence").get_public_url(file_name)
                                         
                                         supabase.table("audit_action_plans").update({
                                             "status": "🟢 CERRADO", 
                                             "corrective_action": act, 
-                                            "correction_photo_url": pic_url
+                                            "correction_photo_url": pic_url,
+                                            "correction_size_bytes": file_size_bytes
                                         }).eq("id", plan['id']).execute()
                                         
                                         st.success("Plan enviado exitosamente.")
