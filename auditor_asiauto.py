@@ -7,6 +7,8 @@ import string
 import os
 import plotly.express as px
 import plotly.graph_objects as go
+from PIL import Image
+import io
 
 # ==========================================
 # 1. CONFIGURATION & STYLES (COMPACT UI)
@@ -445,14 +447,29 @@ elif menu == "📸 Ejecutar Nueva Auditoría":
                         public_photo_url = None
                         if not is_pass and photos[cid] is not None:
                             file = photos[cid]
-                            file_ext = file.name.split('.')[-1]
-                            file_name = f"auditor_{session_id}_item_{cid}_{random.randint(1000,9999)}.{file_ext}"
+                            file_name = f"auditor_{session_id}_item_{cid}_{random.randint(1000,9999)}.jpg"
                             
                             try:
+                                # --- COMPRESSION PIPELINE ---
+                                image = Image.open(file)
+                                
+                                # Convert to RGB (prevents errors if someone uploads a PNG with transparency)
+                                if image.mode in ("RGBA", "P"):
+                                    image = image.convert("RGB")
+                                
+                                # Resize image to max 1080px to save space, keeping aspect ratio
+                                image.thumbnail((1080, 1080), Image.Resampling.LANCZOS)
+                                
+                                # Save the compressed image to a temporary memory buffer
+                                img_byte_arr = io.BytesIO()
+                                image.save(img_byte_arr, format='JPEG', quality=70)
+                                compressed_bytes = img_byte_arr.getvalue()
+                                
+                                # Upload the compressed bytes instead of the raw file
                                 supabase.storage.from_("audit_evidence").upload(
                                     path=file_name,
-                                    file=file.getvalue(),
-                                    file_options={"content-type": file.type}
+                                    file=compressed_bytes,
+                                    file_options={"content-type": "image/jpeg"}
                                 )
                                 public_photo_url = supabase.storage.from_("audit_evidence").get_public_url(file_name)
                             except Exception as e:
