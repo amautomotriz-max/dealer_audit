@@ -174,23 +174,11 @@ if menu == "📊 Dashboard Global":
     avg_score = sum([s['final_score_percentage'] for s in sessions]) / total_audits if total_audits > 0 else 0
     open_plans = supabase.table("audit_action_plans").select("id").eq("status", "🔴 ABIERTO").execute().data
 
-    # --- CALCULATE TOTAL STORAGE ---
-    total_mb = 0
-    records = []
-    if session_ids:
-        records = supabase.table("audit_records").select("session_id, result_pass, evidence_size_bytes, audit_master_catalog!inner(category)").in_("session_id", session_ids).execute().data
-        all_plans = supabase.table("audit_action_plans").select("correction_size_bytes").execute().data
-        
-        bytes_records = sum([r.get('evidence_size_bytes') or 0 for r in records])
-        bytes_plans = sum([p.get('correction_size_bytes') or 0 for p in all_plans])
-        total_mb = (bytes_records + bytes_plans) / (1024 * 1024)
-
     # --- TOP METRICS ROW ---
-    c1, c2, c3, c4 = st.columns(4)
+    c1, c2, c3 = st.columns(3)
     c1.metric("Auditorías Ejecutadas", total_audits)
     c2.metric("Promedio Cumplimiento", f"{avg_score:.1f}%")
     c3.metric("Planes de Acción Abiertos", len(open_plans))
-    c4.metric("Almacenamiento (MB)", f"{total_mb:.2f} MB")
 
     st.markdown("<hr class='slim'>", unsafe_allow_html=True)
 
@@ -234,15 +222,15 @@ if menu == "📊 Dashboard Global":
 
         st.markdown("<hr class='slim'>", unsafe_allow_html=True)
 
-        # --- ROW 2: CATEGORIES & STORAGE CHART ---
-        col_bar1, col_bar2 = st.columns(2)
-        
-        with col_bar1:
-            st.markdown("#### Cumplimiento por Categoría")
+        # --- ROW 2: CATEGORY PERFORMANCE BAR CHART ---
+        st.markdown("#### Cumplimiento por Categoría Evaluada")
+        if session_ids:
+            records = supabase.table("audit_records").select("result_pass, audit_master_catalog!inner(category)").in_("session_id", session_ids).execute().data
             if records:
                 df_rec = pd.DataFrame([{'Categoria': r['audit_master_catalog']['category'], 'Pass': 1 if r['result_pass'] else 0, 'Total': 1} for r in records])
                 resumen = df_rec.groupby('Categoria').sum().reset_index()
                 resumen['Cumplimiento'] = (resumen['Pass'] / resumen['Total'] * 100).round(1)
+                
                 resumen = resumen.sort_values('Cumplimiento', ascending=True)
                 
                 fig_bar = px.bar(resumen, x='Cumplimiento', y='Categoria', orientation='h', text='Cumplimiento', color='Cumplimiento', color_continuous_scale='Blues')
@@ -251,29 +239,9 @@ if menu == "📊 Dashboard Global":
                 fig_bar.update_xaxes(range=[0, 115])
                 st.plotly_chart(fig_bar, use_container_width=True)
 
-        with col_bar2:
-            st.markdown("#### Consumo de Almacenamiento por Auditoría")
-            if records:
-                df_size = pd.DataFrame(records)
-                df_size['evidence_size_bytes'] = df_size['evidence_size_bytes'].fillna(0)
-                
-                # Map session dates to names for the chart
-                session_dict = {s['id']: f"{s['audit_agencies']['name']} ({s['audit_date'][:10]})" for s in sessions}
-                df_size['Auditoria'] = df_size['session_id'].map(session_dict)
-                
-                size_summary = df_size.groupby('Auditoria')['evidence_size_bytes'].sum().reset_index()
-                size_summary['MB'] = (size_summary['evidence_size_bytes'] / (1024 * 1024)).round(2)
-                size_summary = size_summary.sort_values('MB', ascending=False).head(10) # Top 10 heaviest audits
-                
-                fig_size = px.bar(size_summary, x='MB', y='Auditoria', orientation='h', text='MB', color_discrete_sequence=['#ff7f0e'])
-                fig_size.update_traces(texttemplate='%{text} MB', textposition='outside')
-                fig_size.update_layout(height=350, margin=dict(l=20, r=20, t=20, b=20), xaxis_title="Megabytes (MB)", yaxis_title="", yaxis={'categoryorder':'total ascending'})
-                fig_size.update_xaxes(range=[0, size_summary['MB'].max() * 1.2])
-                st.plotly_chart(fig_size, use_container_width=True)
-
 elif menu == "📋 Operaciones (Visión Red)":
     st.title("📋 Gestión de Operaciones")
-    tab1, tab2, tab3 = st.tabs(["📊 Top Puntos Críticos", "📋 Catálogo Máster", "🔑 Directorio y Accesos"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 Top Puntos Críticos", "📋 Catálogo Máster", "🔑 Directorio y Accesos", "💾 Almacenamiento"])
     
     with tab1:
         st.subheader("Ítems con Mayor Tasa de Falla")
@@ -352,6 +320,41 @@ elif menu == "📋 Operaciones (Visión Red)":
                     if st.form_submit_button("Actualizar"):
                         supabase.table("audit_users").update({"full_name": new_n}).eq("username", sel_aud).execute()
                         st.rerun()
+                        
+    with tab4:
+        st.subheader("💾 Monitor de Almacenamiento (Supabase)")
+        
+        all_sessions = supabase.table("audit_sessions").select("id, audit_date, audit_agencies(name)").execute().data
+        sess_dict = {s['id']: f"{s['audit_agencies']['name']} ({s['audit_date'][:10]})" for s in all_sessions} if all_sessions else {}
+        
+        all_records = supabase.table("audit_records").select("session_id, evidence_size_bytes").execute().data
+        all_plans = supabase.table("audit_action_plans").select("correction_size_bytes").execute().data
+        
+        bytes_rec = sum([r.get('evidence_size_bytes') or 0 for r in all_records]) if all_records else 0
+        bytes_plan = sum([p.get('correction_size_bytes') or 0 for p in all_plans]) if all_plans else 0
+        total_mb = (bytes_rec + bytes_plan) / (1024 * 1024)
+        
+        st.metric("Total Almacenamiento Usado", f"{total_mb:.2f} MB")
+        
+        if all_records:
+            df_size = pd.DataFrame(all_records)
+            df_size['evidence_size_bytes'] = df_size['evidence_size_bytes'].fillna(0)
+            df_size['Auditoria'] = df_size['session_id'].map(sess_dict)
+            
+            size_summary = df_size.groupby('Auditoria')['evidence_size_bytes'].sum().reset_index()
+            size_summary['MB'] = (size_summary['evidence_size_bytes'] / (1024 * 1024)).round(2)
+            size_summary = size_summary.sort_values('MB', ascending=False).head(10)
+            
+            if not size_summary.empty and size_summary['MB'].sum() > 0:
+                fig_size = px.bar(size_summary, x='MB', y='Auditoria', orientation='h', text='MB', color_discrete_sequence=['#ff7f0e'])
+                fig_size.update_traces(texttemplate='%{text} MB', textposition='outside')
+                fig_size.update_layout(height=350, margin=dict(l=20, r=20, t=20, b=20), xaxis_title="Megabytes (MB)", yaxis_title="", yaxis={'categoryorder':'total ascending'})
+                fig_size.update_xaxes(range=[0, size_summary['MB'].max() * 1.2])
+                st.plotly_chart(fig_size, use_container_width=True)
+            else:
+                st.info("Aún no hay fotos subidas que ocupen espacio significativo.")
+        else:
+            st.info("No hay registros de auditoría con imágenes.")
 
 elif menu == "🔍 Detalle por Agencia":
     st.title("🔍 Inspección por Agencia")
