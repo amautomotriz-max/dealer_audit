@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 from supabase import create_client, Client
 from datetime import datetime
@@ -7,6 +8,7 @@ import string
 import os
 import plotly.express as px
 import plotly.graph_objects as go
+import base64
 from PIL import Image
 import io
 
@@ -36,6 +38,82 @@ st.markdown("""
     }
     </style>
 """, unsafe_allow_html=True)
+
+# ==========================================
+# CUSTOM COMPONENT: FAST MOBILE CAMERA
+# ==========================================
+def fast_mobile_camera(key=None):
+    component_html = """
+    <html>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <script src="https://cdn.jsdelivr.net/npm/streamlit-component-lib@1.3.0/dist/streamlit.js"></script>
+        <style>
+            body { margin: 0; font-family: sans-serif; display: flex; align-items: center; justify-content: center; background: transparent; }
+            .cam-btn { 
+                background-color: #005ca9; color: white; padding: 10px 15px; 
+                border-radius: 6px; font-weight: bold; cursor: pointer; 
+                display: flex; align-items: center; gap: 8px; font-size: 14px;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: 100%; justify-content: center;
+            }
+            .cam-btn:active { background-color: #003f75; }
+        </style>
+      </head>
+      <body>
+        <label class="cam-btn">
+            📸 Tomar Foto Rápida
+            <input type="file" accept="image/*" capture="environment" id="cameraInput" style="display: none;">
+        </label>
+        
+        <script>
+          function init() { Streamlit.setFrameHeight(50); }
+          
+          document.getElementById('cameraInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            const label = document.querySelector('.cam-btn');
+            label.innerHTML = "⏳ Comprimiendo...";
+            
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const img = new Image();
+                img.onload = function() {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    
+                    const MAX_WIDTH = 1080;
+                    const MAX_HEIGHT = 1080;
+                    let width = img.width;
+                    let height = img.height;
+
+                    if (width > height) {
+                        if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
+                    } else {
+                        if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
+                    }
+                    
+                    canvas.width = width;
+                    canvas.height = height;
+                    ctx.drawImage(img, 0, 0, width, height);
+                    
+                    const base64Data = canvas.toDataURL('image/jpeg', 0.7); 
+                    
+                    label.innerHTML = "✅ Foto Capturada";
+                    label.style.backgroundColor = "#28a745";
+                    Streamlit.setComponentValue(base64Data);
+                }
+                img.src = event.target.result;
+            }
+            reader.readAsDataURL(file);
+          });
+          
+          window.addEventListener('load', init);
+        </script>
+      </body>
+    </html>
+    """
+    return components.html(component_html, height=50, key=key)
 
 # ==========================================
 # 2. SUPABASE INITIALIZATION
@@ -175,10 +253,7 @@ if menu == "📊 Dashboard Global":
             trend_data = df_sessions.groupby('fecha')['final_score_percentage'].mean().reset_index().sort_values('fecha')
             fig_trend = px.line(trend_data, x='fecha', y='final_score_percentage', markers=True)
             fig_trend.update_traces(line_color='#005ca9', marker=dict(size=8))
-            
-            # VERSION 1.14 UPDATE: Force x-axis to be categorical to hide time data
-            fig_trend.update_xaxes(type='category') 
-            
+            fig_trend.update_xaxes(type='category')
             fig_trend.update_layout(height=300, margin=dict(l=20, r=20, t=30, b=20), yaxis_title="Score (%)", xaxis_title="")
             fig_trend.update_yaxes(range=[0, 105])
             st.plotly_chart(fig_trend, use_container_width=True)
@@ -369,13 +444,11 @@ elif menu == "🔍 Detalle por Agencia":
     sel_ag = col_f3.selectbox("Seleccione Agencia:", list(ag_dict.keys()) if ag_dict else ["Sin resultados"])
     
     if sel_ag != "Sin resultados":
-        # VERSION 1.14 UPDATE: Replaced the .limit(1) with a history dropdown
         agency_sessions = supabase.table("audit_sessions").select("*").eq("agency_id", ag_dict[sel_ag]).eq("status", "FINALIZADO").order("audit_date", desc=True).execute().data
         
         if agency_sessions:
             st.divider()
             
-            # Create dropdown options mapped to the actual session object
             session_options = {f"🗓️ {s['audit_date'][:10]} - Score: {s['final_score_percentage']:.1f}%": s for s in agency_sessions}
             
             col_hist1, col_hist2 = st.columns([1, 2])
@@ -471,33 +544,33 @@ elif menu == "📸 Ejecutar Nueva Auditoría":
                 with st.form("single_question_form", clear_on_submit=True):
                     res = st.radio("Resultado de Inspección:", ["PASA", "NO PASA"], horizontal=True)
                     com = st.text_input("Comentario del Auditor (Obligatorio si NO PASA)")
-                    pic = st.file_uploader("Evidencia Fotográfica (Obligatorio si NO PASA)", type=['jpg', 'jpeg', 'png'])
+                    
+                    st.markdown("**Evidencia Fotográfica (Obligatorio si NO PASA)**")
+                    pic_base64 = fast_mobile_camera(key=f"cam_{current_item['id']}")
                     
                     if st.form_submit_button("Guardar y Continuar", type="primary"):
                         is_pass = (res == "PASA")
-                        if not is_pass and pic is None:
+                        if not is_pass and pic_base64 is None:
                             st.error("⚠️ La evidencia fotográfica es obligatoria cuando un ítem NO PASA.")
                         else:
-                            with st.spinner('Guardando evidencia...'):
+                            with st.spinner('Guardando datos...'):
                                 public_photo_url = None
                                 file_size_bytes = 0
                                 
-                                if not is_pass and pic is not None:
+                                if not is_pass and pic_base64 is not None:
                                     file_name = f"auditor_{session_id}_item_{current_item['id']}_{random.randint(1000,9999)}.jpg"
                                     try:
-                                        image = Image.open(pic)
-                                        if image.mode in ("RGBA", "P"): image = image.convert("RGB")
-                                        image.thumbnail((1080, 1080), Image.Resampling.LANCZOS)
+                                        image_data = base64.b64decode(pic_base64.split(",")[1])
+                                        file_size_bytes = len(image_data)
                                         
-                                        img_byte_arr = io.BytesIO()
-                                        image.save(img_byte_arr, format='JPEG', quality=70)
-                                        compressed_bytes = img_byte_arr.getvalue()
-                                        file_size_bytes = len(compressed_bytes)
-                                        
-                                        supabase.storage.from_("audit_evidence").upload(path=file_name, file=compressed_bytes, file_options={"content-type": "image/jpeg"})
+                                        supabase.storage.from_("audit_evidence").upload(
+                                            path=file_name, 
+                                            file=image_data, 
+                                            file_options={"content-type": "image/jpeg"}
+                                        )
                                         public_photo_url = supabase.storage.from_("audit_evidence").get_public_url(file_name)
                                     except Exception as e:
-                                        st.error(f"Error procesando imagen: {e}")
+                                        st.error(f"Error subiendo imagen comprimida: {e}")
 
                                 rec_resp = supabase.table("audit_records").insert({
                                     "session_id": session_id, "catalog_id": current_item['id'], "result_pass": is_pass, 
