@@ -115,7 +115,14 @@ _fast_camera_html = """
 </html>
 """
 
-_fast_camera_func = components.declare_component("fast_mobile_camera", html=_fast_camera_html)
+# Crear dinámicamente la carpeta del componente para que Streamlit la lea correctamente
+_COMPONENT_DIR = ".fast_camera_component"
+if not os.path.exists(_COMPONENT_DIR):
+    os.makedirs(_COMPONENT_DIR)
+    with open(os.path.join(_COMPONENT_DIR, "index.html"), "w", encoding="utf-8") as f:
+        f.write(_fast_camera_html)
+
+_fast_camera_func = components.declare_component("fast_mobile_camera", path=_COMPONENT_DIR)
 
 def fast_mobile_camera(key=None):
     return _fast_camera_func(key=key, default=None)
@@ -172,7 +179,7 @@ if not st.session_state['logged_in']:
 # ==========================================
 # 4. DYNAMIC SIDEBAR NAVIGATION
 # ==========================================
-if os.path.exists("asiauto_logo.png"): st.sidebar.image("asiauto_logo.png", use_container_width=True)
+if os.path.exists("autoplex_logo.png"): st.sidebar.image("autoplex_logo.png", use_container_width=True)
 st.sidebar.markdown("""
     <div style='text-align: center; margin-bottom: 20px;'>
         <h4 style='color: #005ca9; font-weight: bold; margin-bottom: 0px; margin-top: 10px;'>SOPORTE TÉCNICO</h4>
