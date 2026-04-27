@@ -291,33 +291,37 @@ elif menu == "📋 Operaciones (Visión Red)":
         st.subheader("Gestión del Catálogo de Auditoría")
         
         with st.expander("📥 Carga Masiva (Excel/CSV)"):
-            st.info("Columnas requeridas: **item_code**, **category**, **rigor_level**, **audit_question**")
+            st.info("Columnas requeridas: **item_code**, **category**, **sub_category**, **rigor_level**, **audit_question**")
             uploaded_cat = st.file_uploader("Subir Archivo de Catálogo", type=["xlsx", "csv"])
             if uploaded_cat and st.button("Procesar Archivo Masivo", type="primary"):
                 try:
                     df_bulk = pd.read_csv(uploaded_cat) if uploaded_cat.name.endswith('.csv') else pd.read_excel(uploaded_cat)
-                    records_to_insert = df_bulk[['item_code', 'category', 'rigor_level', 'audit_question']].to_dict('records')
+                    records_to_insert = df_bulk[['item_code', 'category', 'sub_category', 'rigor_level', 'audit_question']].to_dict('records')
                     supabase.table("audit_master_catalog").insert(records_to_insert).execute()
                     st.success(f"¡{len(records_to_insert)} ítems cargados!")
                     st.rerun()
                 except Exception as e:
-                    st.error(f"Error procesando archivo: {e}")
+                    st.error(f"Error procesando archivo. Verifique que las 5 columnas estén presentes. Detalles: {e}")
 
         st.divider()
         with st.form("new_catalog_item"):
             st.markdown("#### Agregar Ítem Individual")
-            c1, c2, c3 = st.columns([1, 2, 1])
+            c1, c2, c_sub, c3 = st.columns([1, 2, 2, 1])
             n_code = c1.text_input("Código (Ej. P1-3)")
             n_cat = c2.text_input("Categoría")
+            n_sub = c_sub.text_input("Subcategoría")
             n_rigor = c3.selectbox("Nivel Rigor", [1, 2, 3])
             n_q = st.text_input("Pregunta de Auditoría")
             if st.form_submit_button("Guardar Nuevo Ítem"):
                 if n_code and n_cat and n_q:
-                    supabase.table("audit_master_catalog").insert({"item_code": n_code, "category": n_cat, "rigor_level": n_rigor, "audit_question": n_q}).execute()
+                    supabase.table("audit_master_catalog").insert({
+                        "item_code": n_code, "category": n_cat, "sub_category": n_sub, 
+                        "rigor_level": n_rigor, "audit_question": n_q
+                    }).execute()
                     st.success("Ítem guardado.")
                     st.rerun()
                 else:
-                    st.error("Todos los campos de texto son obligatorios.")
+                    st.error("Los campos Código, Categoría y Pregunta son obligatorios.")
         
         st.divider()
         catalog_data = supabase.table("audit_master_catalog").select("*").order("id").execute().data
@@ -325,6 +329,11 @@ elif menu == "📋 Operaciones (Visión Red)":
         if catalog_data:
             st.markdown("#### Modificar o Eliminar Ítems Existentes")
             df_cat = pd.DataFrame(catalog_data)
+            
+            # Ensure sub_category column exists in dataframe even if all DB records are old/null
+            if 'sub_category' not in df_cat.columns:
+                df_cat['sub_category'] = ""
+                
             sel_item_code = st.selectbox("Seleccione el Ítem a editar:", df_cat['item_code'].tolist())
             item_to_edit = next(item for item in catalog_data if item['item_code'] == sel_item_code)
             
@@ -332,9 +341,14 @@ elif menu == "📋 Operaciones (Visión Red)":
             with c_edit1:
                 with st.form("edit_item_form"):
                     new_q = st.text_input("Pregunta:", value=item_to_edit['audit_question'])
-                    new_cat = st.text_input("Categoría:", value=item_to_edit['category'])
+                    col_cat1, col_cat2 = st.columns(2)
+                    new_cat = col_cat1.text_input("Categoría:", value=item_to_edit['category'])
+                    new_sub = col_cat2.text_input("Subcategoría:", value=item_to_edit.get('sub_category') or "")
+                    
                     if st.form_submit_button("Actualizar Ítem", type="primary"):
-                        supabase.table("audit_master_catalog").update({"audit_question": new_q, "category": new_cat}).eq("id", item_to_edit['id']).execute()
+                        supabase.table("audit_master_catalog").update({
+                            "audit_question": new_q, "category": new_cat, "sub_category": new_sub
+                        }).eq("id", item_to_edit['id']).execute()
                         st.success("Actualizado correctamente.")
                         st.rerun()
             with c_edit2:
@@ -347,7 +361,7 @@ elif menu == "📋 Operaciones (Visión Red)":
                     except Exception as e:
                         st.error("No se puede eliminar porque ya está asociado a auditorías pasadas.")
 
-            st.dataframe(df_cat[['item_code', 'category', 'rigor_level', 'audit_question']], use_container_width=True)
+            st.dataframe(df_cat[['item_code', 'category', 'sub_category', 'rigor_level', 'audit_question']], use_container_width=True)
 
     with tab3:
         def generate_pin(): return ''.join(random.choices(string.digits, k=6))
@@ -434,15 +448,12 @@ elif menu == "📋 Operaciones (Visión Red)":
             if st.button("🔴 BORRAR TODO EL HISTORIAL", type="primary", disabled=not confirm_delete):
                 try:
                     with st.spinner("Eliminando datos..."):
-                        # Borrar planes de acción
                         ap_ids = [x['id'] for x in supabase.table("audit_action_plans").select("id").execute().data]
                         if ap_ids: supabase.table("audit_action_plans").delete().in_("id", ap_ids).execute()
                         
-                        # Borrar registros de preguntas
                         ar_ids = [x['id'] for x in supabase.table("audit_records").select("id").execute().data]
                         if ar_ids: supabase.table("audit_records").delete().in_("id", ar_ids).execute()
                         
-                        # Borrar sesiones de auditoría
                         as_ids = [x['id'] for x in supabase.table("audit_sessions").select("id").execute().data]
                         if as_ids: supabase.table("audit_sessions").delete().in_("id", as_ids).execute()
                         
@@ -489,7 +500,6 @@ elif menu == "📋 Operaciones (Visión Red)":
                 upd_ag_code = e_a2.text_input("Código Dealer", value=ag_edit['dealer_code'])
                 e_a3, e_a4 = st.columns(2)
                 
-                # Check safe indexing in case an old ASIAUTO entry still exists in DB
                 brand_options = ["KIA", "AUTOPLEX"]
                 current_brand = ag_edit['brand'] if ag_edit['brand'] in brand_options else "AUTOPLEX"
                 upd_ag_brand = e_a3.selectbox("Marca", brand_options, index=brand_options.index(current_brand))
@@ -617,7 +627,7 @@ elif menu == "📸 Ejecutar Nueva Auditoría":
                 
                 st.progress(progress, text=f"Progreso: {len(answered_ids)} / {len(catalog)} completados")
                 st.markdown(f"### Ítem Actual: [{current_item['item_code']}]")
-                st.info(f"**Categoría:** {current_item['category']} | **Rigor:** {current_item['rigor_level']}\n\n**Pregunta:** {current_item['audit_question']}")
+                st.info(f"**Categoría:** {current_item['category']} | **Subcategoría:** {current_item.get('sub_category', 'N/A')} | **Rigor:** {current_item['rigor_level']}\n\n**Pregunta:** {current_item['audit_question']}")
                 
                 with st.form("single_question_form", clear_on_submit=True):
                     res = st.radio("Resultado de Inspección:", ["SI", "NO"], horizontal=True)
@@ -628,8 +638,11 @@ elif menu == "📸 Ejecutar Nueva Auditoría":
                     
                     if st.form_submit_button("Guardar y Continuar", type="primary"):
                         is_pass = (res == "SI")
+                        
                         if not is_pass and pic_base64 is None:
                             st.error("⚠️ La evidencia fotográfica es obligatoria cuando un ítem es NO.")
+                        elif not is_pass and not com.strip():
+                            st.error("⚠️ El comentario es obligatorio para explicar la falla.")
                         else:
                             with st.spinner('Guardando datos...'):
                                 public_photo_url = None
@@ -650,17 +663,30 @@ elif menu == "📸 Ejecutar Nueva Auditoría":
                                     except Exception as e:
                                         st.error(f"Error subiendo imagen comprimida: {e}")
 
-                                rec_resp = supabase.table("audit_records").insert({
-                                    "session_id": session_id, "catalog_id": current_item['id'], "result_pass": is_pass, 
-                                    "auditor_comment": com, "failure_photo_url": public_photo_url, "evidence_size_bytes": file_size_bytes
-                                }).execute()
-                                
-                                if not is_pass:
-                                    supabase.table("audit_action_plans").insert({
-                                        "record_id": rec_resp.data[0]['id'], "failure_description": com or "Falla documentada."
+                                try:
+                                    rec_resp = supabase.table("audit_records").insert({
+                                        "session_id": session_id, "catalog_id": current_item['id'], "result_pass": is_pass, 
+                                        "auditor_comment": com, "failure_photo_url": public_photo_url, "evidence_size_bytes": file_size_bytes
                                     }).execute()
-                                
-                                st.rerun()
+                                    
+                                    if not is_pass:
+                                        supabase.table("audit_action_plans").insert({
+                                            "record_id": rec_resp.data[0]['id'], "failure_description": com or "Falla documentada."
+                                        }).execute()
+                                    
+                                    st.rerun()
+                                except Exception as e:
+                                    error_msg = str(e).lower()
+                                    
+                                    if "duplicate key" in error_msg or "unique constraint" in error_msg:
+                                        st.warning("⚠️ Registro duplicado detectado (posible doble clic). Avanzando...")
+                                        st.rerun()
+                                    elif "foreign key" in error_msg:
+                                        st.error("🛑 La sesión de auditoría fue borrada (reseteo detectado). Por favor, inicie una nueva inspección.")
+                                        if 'active_session_id' in st.session_state:
+                                            del st.session_state['active_session_id']
+                                    else:
+                                        st.error(f"🛑 Error de base de datos: {e}")
             else:
                 st.success("✅ ¡Ha respondido todas las preguntas del catálogo!")
                 if st.button("🏁 Cerrar Auditoría y Calcular Score Final", type="primary", use_container_width=True):
