@@ -34,14 +34,6 @@ st.markdown("""
         h1 { font-size: 1.5rem !important; }
         .stButton button { padding: 0.2rem 0.5rem !important; }
     }
-    /* --- PARCHE PARA HACER LA CÁMARA MÁS GRANDE (SIN DISTORSIÓN) --- */
-    [data-testid="stCameraInput"] video, 
-    [data-testid="stCameraInput"] img { 
-        width: 100% !important; 
-        height: auto !important; 
-        max-height: 70vh !important;
-        object-fit: contain !important; 
-    }
     </style>
 """, unsafe_allow_html=True)
 
