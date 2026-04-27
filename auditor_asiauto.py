@@ -275,7 +275,7 @@ if menu == "📊 Dashboard Global":
 
 elif menu == "📋 Operaciones (Visión Red)":
     st.title("📋 Gestión de Operaciones")
-    tab1, tab2, tab3, tab4 = st.tabs(["📊 Puntos Críticos", "📋 Catálogo Máster", "🔑 Accesos", "💾 Almacenamiento"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 Puntos Críticos", "📋 Catálogo Máster", "🔑 Accesos", "💾 Almacenamiento", "🏢 Agencias"])
     
     with tab1:
         st.subheader("Ítems con Mayor Tasa de Falla")
@@ -426,6 +426,54 @@ elif menu == "📋 Operaciones (Visión Red)":
                 st.plotly_chart(fig_size, use_container_width=True)
             else: st.info("Aún no hay fotos subidas.")
 
+    with tab5:
+        st.subheader("🏢 Gestión de Agencias")
+        
+        with st.form("new_agency_form"):
+            st.markdown("#### Registrar Nueva Agencia")
+            c_a1, c_a2 = st.columns(2)
+            new_ag_name = c_a1.text_input("Nombre de Agencia (Ej. Kia Sur)")
+            new_ag_code = c_a2.text_input("Código Dealer (Ej. KIO01)")
+            c_a3, c_a4 = st.columns(2)
+            new_ag_brand = c_a3.selectbox("Marca", ["KIA", "ASIAUTO"])
+            new_ag_region = c_a4.text_input("Región (Ej. Sierra, Costa)")
+            
+            if st.form_submit_button("Guardar Agencia", type="primary"):
+                if new_ag_name and new_ag_code and new_ag_region:
+                    supabase.table("audit_agencies").insert({
+                        "name": new_ag_name, "dealer_code": new_ag_code, 
+                        "brand": new_ag_brand, "region": new_ag_region
+                    }).execute()
+                    st.success("Agencia registrada exitosamente.")
+                    st.rerun()
+                else:
+                    st.error("Por favor complete todos los campos.")
+        
+        st.divider()
+        agencias_existentes = supabase.table("audit_agencies").select("*").order("name").execute().data
+        
+        if agencias_existentes:
+            st.markdown("#### Editar Agencia Existente")
+            ag_names = [f"{a['name']} ({a['dealer_code']})" for a in agencias_existentes]
+            sel_ag_idx = st.selectbox("Seleccione la Agencia a Editar:", range(len(agencias_existentes)), format_func=lambda x: ag_names[x])
+            ag_edit = agencias_existentes[sel_ag_idx]
+            
+            with st.form("edit_agency_form"):
+                e_a1, e_a2 = st.columns(2)
+                upd_ag_name = e_a1.text_input("Nombre de Agencia", value=ag_edit['name'])
+                upd_ag_code = e_a2.text_input("Código Dealer", value=ag_edit['dealer_code'])
+                e_a3, e_a4 = st.columns(2)
+                upd_ag_brand = e_a3.selectbox("Marca", ["KIA", "ASIAUTO"], index=["KIA", "ASIAUTO"].index(ag_edit['brand']))
+                upd_ag_region = e_a4.text_input("Región", value=ag_edit['region'])
+                
+                if st.form_submit_button("Actualizar Agencia"):
+                    supabase.table("audit_agencies").update({
+                        "name": upd_ag_name, "dealer_code": upd_ag_code, 
+                        "brand": upd_ag_brand, "region": upd_ag_region
+                    }).eq("id", ag_edit['id']).execute()
+                    st.success("Datos de la agencia actualizados.")
+                    st.rerun()
+
 elif menu == "🔍 Detalle por Agencia":
     st.title("🔍 Inspección por Agencia")
     
@@ -542,22 +590,22 @@ elif menu == "📸 Ejecutar Nueva Auditoría":
                 st.info(f"**Categoría:** {current_item['category']} | **Rigor:** {current_item['rigor_level']}\n\n**Pregunta:** {current_item['audit_question']}")
                 
                 with st.form("single_question_form", clear_on_submit=True):
-                    res = st.radio("Resultado de Inspección:", ["PASA", "NO PASA"], horizontal=True)
-                    com = st.text_input("Comentario del Auditor (Obligatorio si NO PASA)")
+                    res = st.radio("Resultado de Inspección:", ["SI", "NO"], horizontal=True)
+                    com = st.text_input("Comentario del Auditor (Obligatorio si es NO)")
                     
-                    st.markdown("**Evidencia Fotográfica (Obligatorio si NO PASA)**")
+                    st.markdown("**Evidencia Fotográfica (Opcional en SI, Obligatorio en NO)**")
                     pic_base64 = fast_mobile_camera(key=f"cam_{current_item['id']}")
                     
                     if st.form_submit_button("Guardar y Continuar", type="primary"):
-                        is_pass = (res == "PASA")
+                        is_pass = (res == "SI")
                         if not is_pass and pic_base64 is None:
-                            st.error("⚠️ La evidencia fotográfica es obligatoria cuando un ítem NO PASA.")
+                            st.error("⚠️ La evidencia fotográfica es obligatoria cuando un ítem es NO.")
                         else:
                             with st.spinner('Guardando datos...'):
                                 public_photo_url = None
                                 file_size_bytes = 0
                                 
-                                if not is_pass and pic_base64 is not None:
+                                if pic_base64 is not None:
                                     file_name = f"auditor_{session_id}_item_{current_item['id']}_{random.randint(1000,9999)}.jpg"
                                     try:
                                         image_data = base64.b64decode(pic_base64.split(",")[1])
