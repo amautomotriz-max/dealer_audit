@@ -55,12 +55,14 @@ _fast_camera_html = """
             border-radius: 6px; font-weight: bold; text-align: center;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: 100%; box-sizing: border-box;
             display: flex; justify-content: center; align-items: center; height: 45px;
+            overflow: hidden;
         }
-        /* Mobile security trick: native input is invisible but covers the entire button */
+        /* Mobile security fix: 0.01 opacity and oversized bounds */
         .cam-wrapper input[type="file"] {
             position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            opacity: 0; cursor: pointer; z-index: 10;
+            top: -10px; left: -10px; 
+            width: 200%; height: 200%;
+            opacity: 0.01; cursor: pointer; z-index: 999;
         }
         .cam-wrapper:active { background-color: #003f75; }
     </style>
@@ -68,7 +70,7 @@ _fast_camera_html = """
   <body>
     <div class="cam-wrapper" id="btn-bg">
         <span id="btn-text">📸 Tomar Foto Rápida</span>
-        <input type="file" accept="image/*" capture="environment" id="cameraInput">
+        <input type="file" accept="image/jpeg, image/png, image/jpg" capture="environment" id="cameraInput">
     </div>
     
     <script>
