@@ -43,47 +43,52 @@ st.markdown("""
 # CUSTOM COMPONENT: FAST MOBILE CAMERA (BIDIRECTIONAL)
 # ==========================================
 _fast_camera_html = """
+<!DOCTYPE html>
 <html>
   <head>
+    <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <script src="https://cdn.jsdelivr.net/npm/streamlit-component-lib@1.3.0/dist/streamlit.js"></script>
     <style>
-        body { margin: 0; font-family: sans-serif; background: transparent; }
-        .cam-wrapper { 
+        body { margin: 0; padding: 0; font-family: sans-serif; background: transparent; overflow: hidden; }
+        .cam-container {
             position: relative;
-            background-color: #005ca9; color: white; padding: 12px; 
-            border-radius: 6px; font-weight: bold; text-align: center;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: 100%; box-sizing: border-box;
-            display: flex; justify-content: center; align-items: center; height: 45px;
-            overflow: hidden;
+            width: 100%; height: 50px;
+            background-color: #005ca9; color: white;
+            border-radius: 6px; font-weight: bold; font-size: 14px;
+            display: flex; justify-content: center; align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
-        /* Mobile security fix: 0.01 opacity and oversized bounds */
-        .cam-wrapper input[type="file"] {
+        .cam-container span {
+            z-index: 1; 
+            pointer-events: none; /* Evita que el texto bloquee el toque */
+        }
+        /* El botón nativo cubre todo el espacio y es 100% invisible pero clickeable */
+        input[type="file"] {
             position: absolute;
-            top: -10px; left: -10px; 
-            width: 200%; height: 200%;
-            opacity: 0.01; cursor: pointer; z-index: 999;
+            top: 0; left: 0; right: 0; bottom: 0;
+            width: 100%; height: 100%;
+            opacity: 0; cursor: pointer; z-index: 10;
         }
-        .cam-wrapper:active { background-color: #003f75; }
     </style>
   </head>
   <body>
-    <div class="cam-wrapper" id="btn-bg">
-        <span id="btn-text">📸 Tomar Foto Rápida</span>
-        <input type="file" accept="image/jpeg, image/png, image/jpg" capture="environment" id="cameraInput">
+    <div class="cam-container" id="bg">
+        <span id="txt">📸 Seleccionar o Tomar Foto</span>
+        <input type="file" accept="image/*" id="cam">
     </div>
-    
+
     <script>
       function init() { Streamlit.setFrameHeight(60); }
-      
-      document.getElementById('cameraInput').addEventListener('change', function(e) {
+
+      document.getElementById('cam').addEventListener('change', function(e) {
         const file = e.target.files[0];
         if (!file) return;
-        
-        const btnText = document.getElementById('btn-text');
-        const btnBg = document.getElementById('btn-bg');
-        btnText.innerHTML = "⏳ Comprimiendo...";
-        
+
+        document.getElementById('txt').innerText = "⏳ Procesando...";
+        document.getElementById('bg').style.backgroundColor = "#ffc107";
+        document.getElementById('bg').style.color = "#000";
+
         const reader = new FileReader();
         reader.onload = function(event) {
             const img = new Image();
@@ -91,33 +96,29 @@ _fast_camera_html = """
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
                 
-                const MAX_WIDTH = 1080;
-                const MAX_HEIGHT = 1080;
-                let width = img.width;
-                let height = img.height;
+                // Límite seguro para evitar que el navegador móvil colapse
+                const MAX = 1080;
+                let w = img.width; let h = img.height;
 
-                if (width > height) {
-                    if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
-                } else {
-                    if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
-                }
-                
-                canvas.width = width;
-                canvas.height = height;
-                ctx.drawImage(img, 0, 0, width, height);
-                
-                const base64Data = canvas.toDataURL('image/jpeg', 0.7); 
-                
-                btnText.innerHTML = "✅ Foto Capturada";
-                btnBg.style.backgroundColor = "#28a745";
-                
-                Streamlit.setComponentValue(base64Data);
+                if (w > h) { if (w > MAX) { h *= MAX / w; w = MAX; } }
+                else { if (h > MAX) { w *= MAX / h; h = MAX; } }
+
+                canvas.width = w; canvas.height = h;
+                ctx.drawImage(img, 0, 0, w, h);
+
+                const b64 = canvas.toDataURL('image/jpeg', 0.7);
+
+                document.getElementById('txt').innerText = "✅ Foto Capturada";
+                document.getElementById('bg').style.backgroundColor = "#28a745";
+                document.getElementById('bg').style.color = "#fff";
+
+                Streamlit.setComponentValue(b64);
             }
             img.src = event.target.result;
         }
         reader.readAsDataURL(file);
       });
-      
+
       window.addEventListener('load', init);
     </script>
   </body>
