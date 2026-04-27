@@ -34,6 +34,8 @@ st.markdown("""
         h1 { font-size: 1.5rem !important; }
         .stButton button { padding: 0.2rem 0.5rem !important; }
     }
+    [data-testid="stCameraInput"] video { min-height: 450px !important; object-fit: cover !important; }
+    [data-testid="stCameraInput"] { min-height: 450px !important; }
     </style>
 """, unsafe_allow_html=True)
 
