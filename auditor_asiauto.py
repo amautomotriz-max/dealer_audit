@@ -48,31 +48,39 @@ _fast_camera_html = """
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <script src="https://cdn.jsdelivr.net/npm/streamlit-component-lib@1.3.0/dist/streamlit.js"></script>
     <style>
-        body { margin: 0; font-family: sans-serif; display: flex; align-items: center; justify-content: center; background: transparent; }
-        .cam-btn { 
-            background-color: #005ca9; color: white; padding: 10px 15px; 
-            border-radius: 6px; font-weight: bold; cursor: pointer; 
-            display: flex; align-items: center; gap: 8px; font-size: 14px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: 100%; justify-content: center;
+        body { margin: 0; font-family: sans-serif; background: transparent; }
+        .cam-wrapper { 
+            position: relative;
+            background-color: #005ca9; color: white; padding: 12px; 
+            border-radius: 6px; font-weight: bold; text-align: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: 100%; box-sizing: border-box;
+            display: flex; justify-content: center; align-items: center; height: 45px;
         }
-        .cam-btn:active { background-color: #003f75; }
+        /* Mobile security trick: native input is invisible but covers the entire button */
+        .cam-wrapper input[type="file"] {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            opacity: 0; cursor: pointer; z-index: 10;
+        }
+        .cam-wrapper:active { background-color: #003f75; }
     </style>
   </head>
   <body>
-    <label class="cam-btn">
-        📸 Tomar Foto Rápida
-        <input type="file" accept="image/*" capture="environment" id="cameraInput" style="display: none;">
-    </label>
+    <div class="cam-wrapper" id="btn-bg">
+        <span id="btn-text">📸 Tomar Foto Rápida</span>
+        <input type="file" accept="image/*" capture="environment" id="cameraInput">
+    </div>
     
     <script>
-      function init() { Streamlit.setFrameHeight(50); }
+      function init() { Streamlit.setFrameHeight(60); }
       
       document.getElementById('cameraInput').addEventListener('change', function(e) {
         const file = e.target.files[0];
         if (!file) return;
         
-        const label = document.querySelector('.cam-btn');
-        label.innerHTML = "⏳ Comprimiendo...";
+        const btnText = document.getElementById('btn-text');
+        const btnBg = document.getElementById('btn-bg');
+        btnText.innerHTML = "⏳ Comprimiendo...";
         
         const reader = new FileReader();
         reader.onload = function(event) {
@@ -98,10 +106,9 @@ _fast_camera_html = """
                 
                 const base64Data = canvas.toDataURL('image/jpeg', 0.7); 
                 
-                label.innerHTML = "✅ Foto Capturada";
-                label.style.backgroundColor = "#28a745";
+                btnText.innerHTML = "✅ Foto Capturada";
+                btnBg.style.backgroundColor = "#28a745";
                 
-                // Enviar datos de vuelta a Python
                 Streamlit.setComponentValue(base64Data);
             }
             img.src = event.target.result;
@@ -115,12 +122,11 @@ _fast_camera_html = """
 </html>
 """
 
-# Crear dinámicamente la carpeta del componente para que Streamlit la lea correctamente
+# Force Streamlit to overwrite the HTML file on startup to apply UI changes
 _COMPONENT_DIR = ".fast_camera_component"
-if not os.path.exists(_COMPONENT_DIR):
-    os.makedirs(_COMPONENT_DIR)
-    with open(os.path.join(_COMPONENT_DIR, "index.html"), "w", encoding="utf-8") as f:
-        f.write(_fast_camera_html)
+os.makedirs(_COMPONENT_DIR, exist_ok=True)
+with open(os.path.join(_COMPONENT_DIR, "index.html"), "w", encoding="utf-8") as f:
+    f.write(_fast_camera_html)
 
 _fast_camera_func = components.declare_component("fast_mobile_camera", path=_COMPONENT_DIR)
 
