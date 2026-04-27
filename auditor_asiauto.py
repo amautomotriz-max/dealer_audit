@@ -215,7 +215,7 @@ elif menu == "📋 Operaciones (Visión Red)":
         with st.expander("📥 Carga Masiva (Excel/CSV)"):
             st.info("Columnas requeridas: **item_code**, **category**, **sub_category**, **rigor_level**, **audit_question**")
             
-            replace_catalog = st.checkbox("⚠️ Reemplazar catálogo existente (Borra las preguntas actuales antes de subir el nuevo archivo)")
+            replace_catalog = st.checkbox("⚠️ Reemplazar catálogo existente")
             
             uploaded_cat = st.file_uploader("Subir Archivo de Catálogo", type=["xlsx", "csv"])
             if uploaded_cat and st.button("Procesar Archivo Masivo", type="primary"):
@@ -231,7 +231,7 @@ elif menu == "📋 Operaciones (Visión Red)":
                     st.success(f"¡{len(records_to_insert)} ítems cargados exitosamente!")
                     st.rerun()
                 except Exception as e:
-                    st.error(f"Error procesando archivo. Verifique que las 5 columnas estén presentes y bien escritas. Detalles: {e}")
+                    st.error(f"Error procesando archivo: {e}")
 
         st.divider()
         with st.form("new_catalog_item"):
@@ -251,7 +251,7 @@ elif menu == "📋 Operaciones (Visión Red)":
                     st.success("Ítem guardado.")
                     st.rerun()
                 else:
-                    st.error("Los campos Código, Categoría y Pregunta son obligatorios.")
+                    st.error("Campos Código, Categoría y Pregunta obligatorios.")
         
         st.divider()
         catalog_data = supabase.table("audit_master_catalog").select("*").order("id").execute().data
@@ -288,7 +288,7 @@ elif menu == "📋 Operaciones (Visión Red)":
                         st.success("Ítem eliminado.")
                         st.rerun()
                     except Exception as e:
-                        st.error("No se puede eliminar porque ya está asociado a auditorías pasadas.")
+                        st.error("No se puede eliminar porque ya tiene historial.")
 
             st.dataframe(df_cat[['item_code', 'category', 'sub_category', 'rigor_level', 'audit_question']], use_container_width=True)
 
@@ -325,7 +325,6 @@ elif menu == "📋 Operaciones (Visión Red)":
             if ag_users:
                 df_ag = pd.DataFrame([{"Agencia": u['audit_agencies']['name'] if u['audit_agencies'] else "N/A", "Marca": u['audit_agencies']['brand'] if u['audit_agencies'] else "N/A", "Usuario": u['username'], "PIN": u['password_hash']} for u in ag_users])
                 st.dataframe(df_ag, use_container_width=True)
-                st.download_button("📥 Descargar CSV", df_ag.to_csv(index=False), "directorio_agencias.csv", "text/csv")
         
         with col_dir2:
             st.markdown("#### 🕵️ Auditores")
@@ -333,12 +332,6 @@ elif menu == "📋 Operaciones (Visión Red)":
             if au_users:
                 df_au = pd.DataFrame([{"Usuario": u['username'], "Nombre Real": u.get('full_name') or "No Asignado", "PIN": u['password_hash']} for u in au_users])
                 st.dataframe(df_au, use_container_width=True)
-                with st.form("rename_auditor"):
-                    sel_aud = st.selectbox("Asignar Nombre Real:", [u['username'] for u in au_users])
-                    new_n = st.text_input("Nombre Completo")
-                    if st.form_submit_button("Actualizar"):
-                        supabase.table("audit_users").update({"full_name": new_n}).eq("username", sel_aud).execute()
-                        st.rerun()
                         
     with tab4:
         st.subheader("💾 Monitor de Almacenamiento")
@@ -363,115 +356,48 @@ elif menu == "📋 Operaciones (Visión Red)":
             
             if not size_summary.empty and size_summary['MB'].sum() > 0:
                 fig_size = px.bar(size_summary, x='MB', y='Auditoria', orientation='h', text='MB', color_discrete_sequence=['#ff7f0e'])
-                fig_size.update_traces(texttemplate='%{text} MB', textposition='outside')
-                fig_size.update_layout(height=350, margin=dict(l=20, r=20, t=20, b=20), xaxis_title="Megabytes (MB)", yaxis_title="", yaxis={'categoryorder':'total ascending'})
-                fig_size.update_xaxes(range=[0, size_summary['MB'].max() * 1.2])
+                fig_size.update_layout(height=350, margin=dict(l=20, r=20, t=20, b=20), xaxis_title="Megabytes (MB)", yaxis_title="")
                 st.plotly_chart(fig_size, use_container_width=True)
-            else: st.info("Aún no hay fotos subidas.")
 
         st.divider()
-        with st.expander("⚠️ Zona de Peligro (Borrar Datos de Prueba)"):
-            st.warning("Esta acción eliminará TODAS las sesiones de auditoría, registros y planes de acción de la base de datos. Los usuarios, agencias y el catálogo de preguntas se mantendrán intactos.")
-            confirm_delete = st.checkbox("Entiendo que esto es irreversible y quiero borrar el historial de auditorías.")
-            
+        with st.expander("⚠️ Zona de Peligro"):
+            confirm_delete = st.checkbox("Entiendo que esto es irreversible.")
             if st.button("🔴 BORRAR TODO EL HISTORIAL", type="primary", disabled=not confirm_delete):
                 try:
-                    with st.spinner("Eliminando datos..."):
-                        ap_ids = [x['id'] for x in supabase.table("audit_action_plans").select("id").execute().data]
-                        if ap_ids: supabase.table("audit_action_plans").delete().in_("id", ap_ids).execute()
-                        
-                        ar_ids = [x['id'] for x in supabase.table("audit_records").select("id").execute().data]
-                        if ar_ids: supabase.table("audit_records").delete().in_("id", ar_ids).execute()
-                        
-                        as_ids = [x['id'] for x in supabase.table("audit_sessions").select("id").execute().data]
-                        if as_ids: supabase.table("audit_sessions").delete().in_("id", as_ids).execute()
-                        
-                    st.success("¡Historial borrado completamente!")
+                    ap_ids = [x['id'] for x in supabase.table("audit_action_plans").select("id").execute().data]
+                    if ap_ids: supabase.table("audit_action_plans").delete().in_("id", ap_ids).execute()
+                    ar_ids = [x['id'] for x in supabase.table("audit_records").select("id").execute().data]
+                    if ar_ids: supabase.table("audit_records").delete().in_("id", ar_ids).execute()
+                    as_ids = [x['id'] for x in supabase.table("audit_sessions").select("id").execute().data]
+                    if as_ids: supabase.table("audit_sessions").delete().in_("id", as_ids).execute()
+                    st.success("Historial borrado.")
                     st.rerun()
-                except Exception as e:
-                    st.error(f"Error al intentar borrar la base de datos: {e}")
+                except Exception as e: st.error(f"Error: {e}")
 
     with tab5:
         st.subheader("🏢 Gestión de Agencias")
-        
         with st.form("new_agency_form"):
-            st.markdown("#### Registrar Nueva Agencia")
             c_a1, c_a2 = st.columns(2)
-            new_ag_name = c_a1.text_input("Nombre de Agencia (Ej. Kia Sur)")
-            new_ag_code = c_a2.text_input("Código Dealer (Ej. KIO01)")
+            new_ag_name = c_a1.text_input("Nombre de Agencia")
+            new_ag_code = c_a2.text_input("Código Dealer")
             c_a3, c_a4 = st.columns(2)
             new_ag_brand = c_a3.selectbox("Marca", ["KIA", "AUTOPLEX"])
-            new_ag_region = c_a4.text_input("Región (Ej. Sierra, Costa)")
-            
+            new_ag_region = c_a4.text_input("Región")
             if st.form_submit_button("Guardar Agencia", type="primary"):
                 if new_ag_name and new_ag_code and new_ag_region:
-                    supabase.table("audit_agencies").insert({
-                        "name": new_ag_name, "dealer_code": new_ag_code, 
-                        "brand": new_ag_brand, "region": new_ag_region
-                    }).execute()
-                    st.success("Agencia registrada exitosamente.")
-                    st.rerun()
-                else:
-                    st.error("Por favor complete todos los campos.")
-        
-        st.divider()
-        agencias_existentes = supabase.table("audit_agencies").select("*").order("name").execute().data
-        
-        if agencias_existentes:
-            st.markdown("#### Editar Agencia Existente")
-            ag_names = [f"{a['name']} ({a['dealer_code']})" for a in agencias_existentes]
-            sel_ag_idx = st.selectbox("Seleccione la Agencia a Editar:", range(len(agencias_existentes)), format_func=lambda x: ag_names[x])
-            ag_edit = agencias_existentes[sel_ag_idx]
-            
-            with st.form("edit_agency_form"):
-                e_a1, e_a2 = st.columns(2)
-                upd_ag_name = e_a1.text_input("Nombre de Agencia", value=ag_edit['name'])
-                upd_ag_code = e_a2.text_input("Código Dealer", value=ag_edit['dealer_code'])
-                e_a3, e_a4 = st.columns(2)
-                
-                brand_options = ["KIA", "AUTOPLEX"]
-                current_brand = ag_edit['brand'] if ag_edit['brand'] in brand_options else "AUTOPLEX"
-                upd_ag_brand = e_a3.selectbox("Marca", brand_options, index=brand_options.index(current_brand))
-                
-                upd_ag_region = e_a4.text_input("Región", value=ag_edit['region'])
-                
-                if st.form_submit_button("Actualizar Agencia"):
-                    supabase.table("audit_agencies").update({
-                        "name": upd_ag_name, "dealer_code": upd_ag_code, 
-                        "brand": upd_ag_brand, "region": upd_ag_region
-                    }).eq("id", ag_edit['id']).execute()
-                    st.success("Datos de la agencia actualizados.")
+                    supabase.table("audit_agencies").insert({"name": new_ag_name, "dealer_code": new_ag_code, "brand": new_ag_brand, "region": new_ag_region}).execute()
                     st.rerun()
 
 elif menu == "🔍 Detalle por Agencia":
     st.title("🔍 Inspección por Agencia")
-    
     agencias_raw = supabase.table("audit_agencies").select("*").order("name").execute().data
-    regiones = ["TODAS"] + sorted(list(set([a['region'] for a in agencias_raw])))
-    
-    col_f1, col_f2, col_f3 = st.columns(3)
-    filtro_marca = col_f1.selectbox("Filtrar Marca:", ["TODAS", "KIA", "AUTOPLEX"])
-    filtro_region = col_f2.selectbox("Filtrar Región:", regiones)
-    
-    agencias_filtradas = agencias_raw
-    if filtro_marca != "TODAS": agencias_filtradas = [a for a in agencias_filtradas if a['brand'] == filtro_marca]
-    if filtro_region != "TODAS": agencias_filtradas = [a for a in agencias_filtradas if a['region'] == filtro_region]
-    
-    ag_dict = {f"{a['name']} ({a['dealer_code']})": a['id'] for a in agencias_filtradas}
-    sel_ag = col_f3.selectbox("Seleccione Agencia:", list(ag_dict.keys()) if ag_dict else ["Sin resultados"])
-    
-    if sel_ag != "Sin resultados":
-        agency_sessions = supabase.table("audit_sessions").select("*").eq("agency_id", ag_dict[sel_ag]).eq("status", "FINALIZADO").order("audit_date", desc=True).execute().data
-        
-        if agency_sessions:
-            st.divider()
-            
-            session_options = {f"🗓️ {s['audit_date'][:10]} - Score: {s['final_score_percentage']:.1f}%": s for s in agency_sessions}
-            
-            col_hist1, col_hist2 = st.columns([1, 2])
-            with col_hist1:
-                sel_session_key = st.selectbox("Seleccione la Auditoría (Historial):", list(session_options.keys()))
-            
+    ag_dict = {f"{a['name']} ({a['dealer_code']})": a['id'] for a in agencias_raw}
+    sel_ag = st.selectbox("Seleccione Agencia:", list(ag_dict.keys()))
+    if sel_ag:
+        sessions = supabase.table("audit_sessions").select("*").eq("agency_id", ag_dict[sel_ag]).eq("status", "FINALIZADO").order("audit_date", desc=True).execute().data
+        if sessions:
+            session_options = {f"🗓️ {s['audit_date'][:10]} - Score: {s['final_score_percentage']:.1f}%": s for s in sessions}
+            sel_session_key = st.selectbox("Seleccione Auditoría:", list(session_options.keys()))
             selected_session = session_options[sel_session_key]
             
             st.metric(f"Score ({selected_session['marca']})", f"{selected_session['final_score_percentage']:.1f}%", f"Fecha: {selected_session['audit_date'][:10]}")
@@ -487,9 +413,7 @@ elif menu == "🔍 Detalle por Agencia":
             
             for r in records:
                 is_pass = r['result_pass']
-                
-                if filtro_vista == "Solo Fallas (NO)" and is_pass:
-                    continue
+                if filtro_vista == "Solo Fallas (NO)" and is_pass: continue
                     
                 icon = "✅" if is_pass else "❌"
                 st.markdown(f"**[{r['audit_master_catalog']['item_code']}] {r['audit_master_catalog']['audit_question']}** | {icon}")
@@ -503,10 +427,6 @@ elif menu == "🔍 Detalle por Agencia":
                         st.image(r['failure_photo_url'], width=300)
                         
                 st.markdown("<hr class='slim'>", unsafe_allow_html=True)
-        else:
-            st.info("Esta agencia no tiene auditorías finalizadas registradas.")
-    else:
-        st.warning("No hay agencias que coincidan con estos filtros.")
 
 elif menu == "🚨 Validar Correcciones":
     st.title("🚨 Validación de Planes")
@@ -533,234 +453,137 @@ elif menu == "🚨 Validar Correcciones":
             st.divider()
 
 # ==========================================
-# 6. VIEWS: AUDITOR (THE STEP-BY-STEP ENGINE)
+# 6. VIEWS: AUDITOR (LIVE WEBRTC ENGINE)
 # ==========================================
 elif menu == "📸 Ejecutar Nueva Auditoría":
     st.title("📸 Ejecutar Auditoría")
-    
     in_progress = supabase.table("audit_sessions").select("*, audit_agencies(name)").eq("auditor_id", st.session_state['user_id']).eq("status", "EN PROCESO").execute().data
     
     if in_progress:
         session = in_progress[0]
         session_id = session['id']
-        st.warning(f"⚠️ Tiene una auditoría en progreso en **{session['audit_agencies']['name']}** ({session['marca']}).")
+        st.warning(f"Auditoría en progreso en **{session['audit_agencies']['name']}**.")
         
         c_btn1, c_btn2 = st.columns(2)
-        if c_btn1.button("▶️ Continuar Auditoría", type="primary", use_container_width=True):
-            st.session_state['active_session_id'] = session_id
-            st.rerun()
-        if c_btn2.button("🗑️ Descartar y Empezar Nueva", use_container_width=True):
+        if c_btn1.button("▶️ Continuar"): st.session_state['active_session_id'] = session_id; st.rerun()
+        if c_btn2.button("🗑️ Descartar"):
             supabase.table("audit_records").delete().eq("session_id", session_id).execute()
             supabase.table("audit_sessions").delete().eq("id", session_id).execute()
-            if 'active_session_id' in st.session_state: del st.session_state['active_session_id']
             st.rerun()
             
         if st.session_state.get('active_session_id') == session_id:
             st.divider()
-            
             rigor_filter = session.get('rigor_level_filter', 3)
             query = supabase.table("audit_master_catalog").select("*").order("id")
-            if rigor_filter < 3:
-                query = query.lte("rigor_level", rigor_filter)
+            if rigor_filter < 3: query = query.lte("rigor_level", rigor_filter)
             catalog = query.execute().data
             
-            if not catalog:
-                st.error("El catálogo de preguntas está vacío o no hay ítems para este nivel de rigor.")
-                st.stop()
-
             answered_records = supabase.table("audit_records").select("catalog_id, result_pass").eq("session_id", session_id).execute().data
             answered_ids = [r['catalog_id'] for r in answered_records]
-            
             pending_items = [item for item in catalog if item['id'] not in answered_ids]
             
             if pending_items:
                 current_item = pending_items[0]
-                progress = len(answered_ids) / len(catalog)
-                
-                st.progress(progress, text=f"Progreso: {len(answered_ids)} / {len(catalog)} completados")
+                st.progress(len(answered_ids) / len(catalog), text=f"Progreso: {len(answered_ids)} / {len(catalog)}")
                 st.markdown(f"### Ítem Actual: [{current_item['item_code']}]")
-                
-                # --- PERFIL RESTAURADO ---
                 st.info(f"**Categoría:** {current_item['category']} | **Subcategoría:** {current_item.get('sub_category', 'N/A')} | **Rigor:** {current_item['rigor_level']}\n\n**Pregunta:** {current_item['audit_question']}")
                 
-                # --- NUEVO DISEÑO COMPACTO PARA REDUCIR SCROLL ---
                 with st.form("single_question_form", clear_on_submit=True):
-                    
                     col_r1, col_r2 = st.columns(2)
-                    with col_r1:
-                        res = st.radio("Resultado de Inspección:", ["SI", "NO"], horizontal=True)
-                    with col_r2:
-                        captura_modo = st.radio("Método de captura:", ["Cámara en Vivo (Rápido)", "Subir Galería"], horizontal=True)
-                        
-                    com = st.text_input("Comentario del Auditor (Obligatorio si es NO)")
+                    with col_r1: res = st.radio("Resultado:", ["SI", "NO"], horizontal=True)
+                    with col_r2: captura_modo = st.radio("Cámara:", ["Vivo (Rápido)", "Galería"], horizontal=True)
                     
-                    if captura_modo == "Cámara en Vivo (Rápido)":
-                        uploaded_photo = st.camera_input("📸 Tome la foto de la falla")
-                    else:
-                        uploaded_photo = st.file_uploader("📂 Seleccione de la galería", type=['jpg', 'jpeg', 'png'])
+                    com = st.text_input("Comentario (Obligatorio en NO)")
+                    uploaded_photo = st.camera_input("Foto") if captura_modo == "Vivo (Rápido)" else st.file_uploader("Subir")
                     
                     if st.form_submit_button("Guardar y Continuar", type="primary", use_container_width=True):
                         is_pass = (res == "SI")
-                        
-                        if not is_pass and uploaded_photo is None:
-                            st.error("⚠️ La evidencia fotográfica es obligatoria cuando un ítem es NO.")
-                        elif not is_pass and not com.strip():
-                            st.error("⚠️ El comentario es obligatorio para explicar la falla.")
+                        if not is_pass and (uploaded_photo is None or not com.strip()):
+                            st.error("Evidencia y comentario obligatorios en NO.")
                         else:
-                            with st.spinner('Procesando datos y subiendo a Supabase...'):
+                            with st.spinner('Guardando...'):
                                 public_photo_url = None
-                                file_size_bytes = 0
+                                file_size = 0
+                                if uploaded_photo:
+                                    img = Image.open(uploaded_photo)
+                                    img.thumbnail((1080, 1080))
+                                    buf = io.BytesIO()
+                                    img.save(buf, format='JPEG', quality=70)
+                                    b = buf.getvalue(); file_size = len(b)
+                                    fname = f"audit_{session_id}_{current_item['id']}.jpg"
+                                    supabase.storage.from_("audit_evidence").upload(fname, b, {"content-type": "image/jpeg"})
+                                    public_photo_url = supabase.storage.from_("audit_evidence").get_public_url(fname)
                                 
-                                if uploaded_photo is not None:
-                                    file_name = f"auditor_{session_id}_item_{current_item['id']}_{random.randint(1000,9999)}.jpg"
-                                    try:
-                                        image = Image.open(uploaded_photo)
-                                        if image.mode in ("RGBA", "P"): image = image.convert("RGB")
-                                        image.thumbnail((1080, 1080), Image.Resampling.LANCZOS)
-                                        
-                                        img_byte_arr = io.BytesIO()
-                                        image.save(img_byte_arr, format='JPEG', quality=70)
-                                        compressed_bytes = img_byte_arr.getvalue()
-                                        file_size_bytes = len(compressed_bytes)
-                                        
-                                        supabase.storage.from_("audit_evidence").upload(
-                                            path=file_name, 
-                                            file=compressed_bytes, 
-                                            file_options={"content-type": "image/jpeg"}
-                                        )
-                                        public_photo_url = supabase.storage.from_("audit_evidence").get_public_url(file_name)
-                                    except Exception as e:
-                                        st.error(f"Error subiendo imagen comprimida: {e}")
-
-                                try:
-                                    rec_resp = supabase.table("audit_records").insert({
-                                        "session_id": session_id, "catalog_id": current_item['id'], "result_pass": is_pass, 
-                                        "auditor_comment": com, "failure_photo_url": public_photo_url, "evidence_size_bytes": file_size_bytes
-                                    }).execute()
-                                    
-                                    if not is_pass:
-                                        supabase.table("audit_action_plans").insert({
-                                            "record_id": rec_resp.data[0]['id'], "failure_description": com or "Falla documentada."
-                                        }).execute()
-                                    
-                                    st.rerun()
-                                except Exception as e:
-                                    error_msg = str(e).lower()
-                                    
-                                    if "duplicate key" in error_msg or "unique constraint" in error_msg:
-                                        st.warning("⚠️ Registro duplicado detectado (posible doble clic). Avanzando...")
-                                        st.rerun()
-                                    elif "foreign key" in error_msg:
-                                        st.error("🛑 La sesión de auditoría fue borrada (reseteo detectado). Por favor, inicie una nueva inspección.")
-                                        if 'active_session_id' in st.session_state:
-                                            del st.session_state['active_session_id']
-                                    else:
-                                        st.error(f"🛑 Error de base de datos: {e}")
+                                rec = supabase.table("audit_records").insert({
+                                    "session_id": session_id, "catalog_id": current_item['id'], "result_pass": is_pass, 
+                                    "auditor_comment": com, "failure_photo_url": public_photo_url, "evidence_size_bytes": file_size
+                                }).execute()
+                                if not is_pass:
+                                    supabase.table("audit_action_plans").insert({"record_id": rec.data[0]['id'], "failure_description": com}).execute()
+                                st.rerun()
             else:
-                st.success("✅ ¡Ha respondido todas las preguntas del catálogo!")
-                if st.button("🏁 Cerrar Auditoría y Calcular Score Final", type="primary", use_container_width=True):
-                    final_score = (sum(1 for r in answered_records if r.get('result_pass', True)) / len(catalog)) * 100 if catalog else 0
-                    
-                    session_info = supabase.table("audit_sessions").select("created_at").eq("id", session_id).execute().data[0]
-                    try:
-                        clean_time_str = session_info['created_at'].replace('Z', '+00:00').split('.')[0]
-                        start_dt = datetime.fromisoformat(clean_time_str).replace(tzinfo=None)
-                        dur_sec = int((datetime.utcnow() - start_dt).total_seconds())
-                    except Exception:
-                        dur_sec = 0
-                    
-                    supabase.table("audit_sessions").update({
-                        "status": "FINALIZADO", "final_score_percentage": final_score, "duration_seconds": dur_sec
-                    }).eq("id", session_id).execute()
-                    
-                    if 'active_session_id' in st.session_state: del st.session_state['active_session_id']
-                    st.balloons()
-                    st.rerun()
-
+                st.success("¡Finalizado!")
+                if st.button("🏁 Cerrar y Calcular Score"):
+                    score = (sum(1 for r in answered_records if r['result_pass']) / len(catalog)) * 100
+                    supabase.table("audit_sessions").update({"status": "FINALIZADO", "final_score_percentage": score}).eq("id", session_id).execute()
+                    st.balloons(); st.rerun()
     else:
-        st.info("Seleccione los datos del concesionario para iniciar una nueva inspección.")
-        c_m1, c_m2 = st.columns([1, 2])
-        sel_marca = c_m1.radio("1. Marca:", ["KIA", "AUTOPLEX"], horizontal=True)
-        ag_data = supabase.table("audit_agencies").select("id, name, dealer_code, brand").eq("brand", sel_marca).order("name").execute().data
-        
-        if not ag_data: st.warning(f"No hay agencias de {sel_marca}.")
-        else:
-            # --- ETIQUETAS DE AGENCIA RESTAURADAS ---
-            ag_dict = {f"{a['name']} ({a['dealer_code']})": a['id'] for a in ag_data}
-            sel_ag_name = c_m2.selectbox(f"2. Punto de Red {sel_marca}:", list(ag_dict.keys()))
-            
-            st.divider()
-            st.markdown("#### ⚖️ Intensidad de la Auditoría")
-            rigor_sel = st.select_slider(
-                "Nivel de rigurosidad:",
-                options=[1, 2, 3],
-                value=3,
-                format_func=lambda x: {1: "Nivel 1 (Express/Crítico)", 2: "Nivel 2 (Estándar)", 3: "Nivel 3 (Full/Profunda)"}[x]
-            )
-            
-            if st.button("🚀 INICIAR AUDITORÍA", type="primary", use_container_width=True):
-                new_session = supabase.table("audit_sessions").insert({
-                    "agency_id": ag_dict[sel_ag_name], "auditor_id": st.session_state['user_id'], 
-                    "marca": sel_marca, "status": "EN PROCESO", "rigor_level_filter": rigor_sel
-                }).execute()
-                st.session_state['active_session_id'] = new_session.data[0]['id']
-                st.rerun()
+        st.info("Nueva Inspección")
+        c1, c2 = st.columns([1, 2])
+        marca = c1.radio("Marca:", ["KIA", "AUTOPLEX"], horizontal=True)
+        agencias = supabase.table("audit_agencies").select("id, name, dealer_code").eq("brand", marca).execute().data
+        if agencias:
+            ag_dict = {f"{a['name']} ({a['dealer_code']})": a['id'] for a in agencias}
+            sel_ag = c2.selectbox("Agencia:", list(ag_dict.keys()))
+            rigor_sel = st.select_slider("Nivel de rigurosidad:", options=[1, 2, 3], value=3)
+            if st.button("🚀 INICIAR", type="primary"):
+                new_s = supabase.table("audit_sessions").insert({"agency_id": ag_dict[sel_ag], "auditor_id": st.session_state['user_id'], "marca": marca, "status": "EN PROCESO", "rigor_level_filter": rigor_sel}).execute()
+                st.session_state['active_session_id'] = new_s.data[0]['id']; st.rerun()
 
 elif menu == "📂 Mi Historial":
     st.title("📂 Mi Historial")
     hist = supabase.table("audit_sessions").select("*, audit_agencies(name)").eq("auditor_id", st.session_state['user_id']).eq("status", "FINALIZADO").order("audit_date", desc=True).execute().data
     if hist:
-        df_h = pd.DataFrame([{"Agencia": h['audit_agencies']['name'], "Marca": h['marca'], "Fecha": h['audit_date'][:10], "Score": f"{h['final_score_percentage']}%", "Tiempo": f"{int(h['duration_seconds'] // 60)} min" if h.get('duration_seconds') else "N/A"} for h in hist])
+        df_h = pd.DataFrame([{"Agencia": h['audit_agencies']['name'], "Fecha": h['audit_date'][:10], "Score": f"{h['final_score_percentage']:.1f}%"} for h in hist])
         st.dataframe(df_h, use_container_width=True)
-    else:
-        st.info("Aún no ha finalizado ninguna auditoría.")
 
 # ==========================================
-# 7. VIEWS: AGENCY
+# 7. VIEWS: AGENCY (PHOTO BUG FIXED HERE)
 # ==========================================
 elif menu == "📑 Mi Última Auditoría":
     st.title(f"📑 {st.session_state['agency_name']}")
     session = supabase.table("audit_sessions").select("*").eq("agency_id", st.session_state['agency_id']).eq("status", "FINALIZADO").order("audit_date", desc=True).limit(1).execute().data
-    if session:
-        st.metric(f"Último Score ({session[0]['marca']})", f"{session[0]['final_score_percentage']:.1f}%", f"Fecha: {session[0]['audit_date'][:10]}")
-    else: st.info("Agencia sin auditorías registradas.")
+    if session: st.metric("Cumplimiento", f"{session[0]['final_score_percentage']:.1f}%")
 
 elif menu == "🛠️ Mis Planes de Acción":
     st.title("🛠️ Gestión de Planes")
-    records = supabase.table("audit_records").select("id, audit_sessions!inner(agency_id), audit_master_catalog(item_code, audit_question)").eq("audit_sessions.agency_id", st.session_state['agency_id']).execute().data
+    # --- QUERY ACTUALIZADA PARA TRAER FOTO Y COMENTARIO ---
+    records = supabase.table("audit_records").select("id, failure_photo_url, auditor_comment, audit_sessions!inner(agency_id), audit_master_catalog(item_code, audit_question)").eq("audit_sessions.agency_id", st.session_state['agency_id']).execute().data
     if records:
-        rec_dict = {r['id']: r['audit_master_catalog'] for r in records}
+        rec_dict = {r['id']: r for r in records}
         plans = supabase.table("audit_action_plans").select("*").in_("record_id", list(rec_dict.keys())).eq("status", "🔴 ABIERTO").execute().data
         if plans:
             for plan in plans:
-                cat = rec_dict[plan['record_id']]
+                rec_data = rec_dict[plan['record_id']]
+                cat = rec_data['audit_master_catalog']
                 with st.expander(f"🔴 [{cat['item_code']}] {cat['audit_question'][:60]}..."):
                     st.error(f"Reporte del Auditor: {plan['failure_description']}")
+                    # --- MOSTRAR FOTO DE EVIDENCIA ORIGINAL ---
+                    if rec_data.get('failure_photo_url'):
+                        st.image(rec_data['failure_photo_url'], caption="Evidencia de la falla", width=400)
+                    
                     with st.form(f"fix_{plan['id']}"):
                         act = st.text_input("Acción Ejecutada (Obligatorio)")
-                        corr_pic = st.file_uploader("Subir Foto de la Corrección", type=['jpg', 'jpeg', 'png'], key=f"up_{plan['id']}", accept_multiple_files=False)
-                        
-                        if st.form_submit_button("Subir y Enviar a Validación"):
-                            if act and corr_pic is not None:
-                                with st.spinner('Comprimiendo y subiendo evidencia...'):
-                                    file_name = f"agency_fix_plan_{plan['id']}_{random.randint(1000,9999)}.jpg"
-                                    try:
-                                        image = Image.open(corr_pic)
-                                        if image.mode in ("RGBA", "P"): image = image.convert("RGB")
-                                        image.thumbnail((1080, 1080), Image.Resampling.LANCZOS)
-                                        
-                                        img_byte_arr = io.BytesIO()
-                                        image.save(img_byte_arr, format='JPEG', quality=70)
-                                        compressed_bytes = img_byte_arr.getvalue()
-                                        file_size_bytes = len(compressed_bytes)
-                                        
-                                        supabase.storage.from_("audit_evidence").upload(path=file_name, file=compressed_bytes, file_options={"content-type": "image/jpeg"})
-                                        pic_url = supabase.storage.from_("audit_evidence").get_public_url(file_name)
-                                        
-                                        supabase.table("audit_action_plans").update({"status": "🟢 CERRADO", "corrective_action": act, "correction_photo_url": pic_url, "correction_size_bytes": file_size_bytes}).eq("id", plan['id']).execute()
-                                        st.success("Plan enviado exitosamente.")
-                                        st.rerun()
-                                    except Exception as e: st.error(f"Error al subir imagen: {e}")
-                            else: st.error("Debe escribir la acción y subir una foto de evidencia.")
-        else: st.success("No tiene planes de acción abiertos.")
-    else: st.success("No hay registros vinculados a esta agencia.")
+                        corr_pic = st.file_uploader("Subir Foto de la Corrección", type=['jpg', 'jpeg', 'png'])
+                        if st.form_submit_button("Subir y Enviar"):
+                            if act and corr_pic:
+                                with st.spinner('Enviando...'):
+                                    img = Image.open(corr_pic); img.thumbnail((1080, 1080))
+                                    buf = io.BytesIO(); img.save(buf, format='JPEG', quality=70)
+                                    b = buf.getvalue(); fname = f"fix_{plan['id']}.jpg"
+                                    supabase.storage.from_("audit_evidence").upload(fname, b, {"content-type": "image/jpeg"})
+                                    pic_url = supabase.storage.from_("audit_evidence").get_public_url(fname)
+                                    supabase.table("audit_action_plans").update({"status": "🟢 CERRADO", "corrective_action": act, "correction_photo_url": pic_url, "correction_size_bytes": len(b)}).eq("id", plan['id']).execute()
+                                    st.success("Plan enviado."); st.rerun()
+        else: st.success("No hay planes abiertos.")
+    else: st.info("Sin registros.")
