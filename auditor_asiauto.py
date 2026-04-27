@@ -201,7 +201,7 @@ if menu == "📊 Dashboard Global":
     regiones = ["TODAS"] + sorted(list(set([a['region'] for a in agencias_raw])))
     
     col_f1, col_f2, col_f3 = st.columns(3)
-    filtro_marca = col_f1.selectbox("Filtrar por Marca:", ["TODAS", "KIA", "ASIAUTO"])
+    filtro_marca = col_f1.selectbox("Filtrar por Marca:", ["TODAS", "KIA", "AUTOPLEX"])
     filtro_region = col_f2.selectbox("Filtrar por Región:", regiones)
     
     agencias_filtradas = agencias_raw
@@ -426,6 +426,31 @@ elif menu == "📋 Operaciones (Visión Red)":
                 st.plotly_chart(fig_size, use_container_width=True)
             else: st.info("Aún no hay fotos subidas.")
 
+        st.divider()
+        with st.expander("⚠️ Zona de Peligro (Borrar Datos de Prueba)"):
+            st.warning("Esta acción eliminará TODAS las sesiones de auditoría, registros y planes de acción de la base de datos. Los usuarios, agencias y el catálogo de preguntas se mantendrán intactos.")
+            confirm_delete = st.checkbox("Entiendo que esto es irreversible y quiero borrar el historial de auditorías.")
+            
+            if st.button("🔴 BORRAR TODO EL HISTORIAL", type="primary", disabled=not confirm_delete):
+                try:
+                    with st.spinner("Eliminando datos..."):
+                        # Borrar planes de acción
+                        ap_ids = [x['id'] for x in supabase.table("audit_action_plans").select("id").execute().data]
+                        if ap_ids: supabase.table("audit_action_plans").delete().in_("id", ap_ids).execute()
+                        
+                        # Borrar registros de preguntas
+                        ar_ids = [x['id'] for x in supabase.table("audit_records").select("id").execute().data]
+                        if ar_ids: supabase.table("audit_records").delete().in_("id", ar_ids).execute()
+                        
+                        # Borrar sesiones de auditoría
+                        as_ids = [x['id'] for x in supabase.table("audit_sessions").select("id").execute().data]
+                        if as_ids: supabase.table("audit_sessions").delete().in_("id", as_ids).execute()
+                        
+                    st.success("¡Historial borrado completamente!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error al intentar borrar la base de datos: {e}")
+
     with tab5:
         st.subheader("🏢 Gestión de Agencias")
         
@@ -435,7 +460,7 @@ elif menu == "📋 Operaciones (Visión Red)":
             new_ag_name = c_a1.text_input("Nombre de Agencia (Ej. Kia Sur)")
             new_ag_code = c_a2.text_input("Código Dealer (Ej. KIO01)")
             c_a3, c_a4 = st.columns(2)
-            new_ag_brand = c_a3.selectbox("Marca", ["KIA", "ASIAUTO"])
+            new_ag_brand = c_a3.selectbox("Marca", ["KIA", "AUTOPLEX"])
             new_ag_region = c_a4.text_input("Región (Ej. Sierra, Costa)")
             
             if st.form_submit_button("Guardar Agencia", type="primary"):
@@ -463,7 +488,12 @@ elif menu == "📋 Operaciones (Visión Red)":
                 upd_ag_name = e_a1.text_input("Nombre de Agencia", value=ag_edit['name'])
                 upd_ag_code = e_a2.text_input("Código Dealer", value=ag_edit['dealer_code'])
                 e_a3, e_a4 = st.columns(2)
-                upd_ag_brand = e_a3.selectbox("Marca", ["KIA", "ASIAUTO"], index=["KIA", "ASIAUTO"].index(ag_edit['brand']))
+                
+                # Check safe indexing in case an old ASIAUTO entry still exists in DB
+                brand_options = ["KIA", "AUTOPLEX"]
+                current_brand = ag_edit['brand'] if ag_edit['brand'] in brand_options else "AUTOPLEX"
+                upd_ag_brand = e_a3.selectbox("Marca", brand_options, index=brand_options.index(current_brand))
+                
                 upd_ag_region = e_a4.text_input("Región", value=ag_edit['region'])
                 
                 if st.form_submit_button("Actualizar Agencia"):
@@ -481,7 +511,7 @@ elif menu == "🔍 Detalle por Agencia":
     regiones = ["TODAS"] + sorted(list(set([a['region'] for a in agencias_raw])))
     
     col_f1, col_f2, col_f3 = st.columns(3)
-    filtro_marca = col_f1.selectbox("Filtrar Marca:", ["TODAS", "KIA", "ASIAUTO"])
+    filtro_marca = col_f1.selectbox("Filtrar Marca:", ["TODAS", "KIA", "AUTOPLEX"])
     filtro_region = col_f2.selectbox("Filtrar Región:", regiones)
     
     agencias_filtradas = agencias_raw
@@ -655,7 +685,7 @@ elif menu == "📸 Ejecutar Nueva Auditoría":
     else:
         st.info("Seleccione los datos del concesionario para iniciar una nueva inspección.")
         c_m1, c_m2 = st.columns([1, 2])
-        sel_marca = c_m1.radio("1. Marca:", ["KIA", "ASIAUTO"], horizontal=True)
+        sel_marca = c_m1.radio("1. Marca:", ["KIA", "AUTOPLEX"], horizontal=True)
         ag_data = supabase.table("audit_agencies").select("id, name, dealer_code, brand").eq("brand", sel_marca).order("name").execute().data
         
         if not ag_data: st.warning(f"No hay agencias de {sel_marca}.")
