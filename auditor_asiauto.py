@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 from supabase import create_client, Client
 from datetime import datetime
@@ -7,8 +8,7 @@ import string
 import os
 import plotly.express as px
 import plotly.graph_objects as go
-from PIL import Image
-import io
+import base64
 
 # ==========================================
 # 1. CONFIGURATION & STYLES (COMPACT UI)
@@ -36,6 +36,101 @@ st.markdown("""
     }
     </style>
 """, unsafe_allow_html=True)
+
+# ==========================================
+# CUSTOM COMPONENT: FAST MOBILE CAMERA (PWA MODE)
+# ==========================================
+_fast_camera_html = """
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="https://cdn.jsdelivr.net/npm/streamlit-component-lib@1.3.0/dist/streamlit.js"></script>
+    <style>
+        body { margin: 0; padding: 0; font-family: sans-serif; background: transparent; overflow: hidden; }
+        .cam-container {
+            position: relative;
+            width: 100%; height: 50px;
+            background-color: #005ca9; color: white;
+            border-radius: 6px; font-weight: bold; font-size: 14px;
+            display: flex; justify-content: center; align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .cam-container span {
+            z-index: 1; 
+            pointer-events: none; 
+        }
+        input[type="file"] {
+            position: absolute;
+            top: -10px; left: -10px; 
+            width: 200%; height: 200%;
+            opacity: 0.01; cursor: pointer; z-index: 10;
+        }
+    </style>
+  </head>
+  <body>
+    <div class="cam-container" id="bg">
+        <span id="txt">📸 Tomar Foto Rápida</span>
+        <input type="file" accept="image/*" capture="environment" id="cam">
+    </div>
+
+    <script>
+      function init() { Streamlit.setFrameHeight(60); }
+
+      document.getElementById('cam').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        document.getElementById('txt').innerText = "⏳ Comprimiendo...";
+        document.getElementById('bg').style.backgroundColor = "#ffc107";
+        document.getElementById('bg').style.color = "#000";
+
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            const img = new Image();
+            img.onload = function() {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                
+                const MAX = 1080;
+                let w = img.width; let h = img.height;
+
+                if (w > h) { if (w > MAX) { h *= MAX / w; w = MAX; } }
+                else { if (h > MAX) { w *= MAX / h; h = MAX; } }
+
+                canvas.width = w; canvas.height = h;
+                ctx.drawImage(img, 0, 0, w, h);
+
+                const b64 = canvas.toDataURL('image/jpeg', 0.7);
+
+                document.getElementById('txt').innerText = "✅ Foto Capturada";
+                document.getElementById('bg').style.backgroundColor = "#28a745";
+                document.getElementById('bg').style.color = "#fff";
+
+                Streamlit.setComponentValue(b64);
+            }
+            img.src = event.target.result;
+        }
+        reader.readAsDataURL(file);
+      });
+
+      window.addEventListener('load', init);
+    </script>
+  </body>
+</html>
+"""
+
+_COMPONENT_DIR = ".fast_camera_component"
+os.makedirs(_COMPONENT_DIR, exist_ok=True)
+with open(os.path.join(_COMPONENT_DIR, "index.html"), "w", encoding="utf-8") as f:
+    f.write(_fast_camera_html)
+
+_fast_camera_func = components.declare_component("fast_mobile_camera", path=_COMPONENT_DIR)
+
+def fast_mobile_camera(key=None):
+    return _fast_camera_func(key=key, default=None)
 
 # ==========================================
 # 2. SUPABASE INITIALIZATION
@@ -315,7 +410,7 @@ elif menu == "📋 Operaciones (Visión Red)":
                 start = max(nums) + 1 if nums else 1
                 for i in range(start, start + 10):
                     supabase.table("audit_users").insert({"username": f"auditor_{i:02d}", "password_hash": generate_pin(), "role": "auditor"}).execute()
-                st.success("10 perfiles creados.")
+                st.success("10 perfiles creado.")
 
         st.divider()
         col_dir1, col_dir2 = st.columns(2)
@@ -562,13 +657,13 @@ elif menu == "📸 Ejecutar Nueva Auditoría":
                     res = st.radio("Resultado de Inspección:", ["SI", "NO"], horizontal=True)
                     com = st.text_input("Comentario del Auditor (Obligatorio si es NO)")
                     
-                    st.markdown("**Evidencia Fotográfica**")
-                    uploaded_photo = st.file_uploader("📸 Tomar o Subir Foto (Opcional en SI, Obligatorio en NO)", type=['jpg', 'jpeg', 'png'], key=f"cam_{current_item['id']}")
+                    st.markdown("**Evidencia Fotográfica (Opcional en SI, Obligatorio en NO)**")
+                    pic_base64 = fast_mobile_camera(key=f"cam_{current_item['id']}")
                     
                     if st.form_submit_button("Guardar y Continuar", type="primary"):
                         is_pass = (res == "SI")
                         
-                        if not is_pass and uploaded_photo is None:
+                        if not is_pass and pic_base64 is None:
                             st.error("⚠️ La evidencia fotográfica es obligatoria cuando un ítem es NO.")
                         elif not is_pass and not com.strip():
                             st.error("⚠️ El comentario es obligatorio para explicar la falla.")
@@ -577,22 +672,15 @@ elif menu == "📸 Ejecutar Nueva Auditoría":
                                 public_photo_url = None
                                 file_size_bytes = 0
                                 
-                                if uploaded_photo is not None:
+                                if pic_base64 is not None:
                                     file_name = f"auditor_{session_id}_item_{current_item['id']}_{random.randint(1000,9999)}.jpg"
                                     try:
-                                        # Compresión en el servidor usando PIL
-                                        image = Image.open(uploaded_photo)
-                                        if image.mode in ("RGBA", "P"): image = image.convert("RGB")
-                                        image.thumbnail((1080, 1080), Image.Resampling.LANCZOS)
-                                        
-                                        img_byte_arr = io.BytesIO()
-                                        image.save(img_byte_arr, format='JPEG', quality=70)
-                                        compressed_bytes = img_byte_arr.getvalue()
-                                        file_size_bytes = len(compressed_bytes)
+                                        image_data = base64.b64decode(pic_base64.split(",")[1])
+                                        file_size_bytes = len(image_data)
                                         
                                         supabase.storage.from_("audit_evidence").upload(
                                             path=file_name, 
-                                            file=compressed_bytes, 
+                                            file=image_data, 
                                             file_options={"content-type": "image/jpeg"}
                                         )
                                         public_photo_url = supabase.storage.from_("audit_evidence").get_public_url(file_name)
@@ -696,6 +784,7 @@ elif menu == "🛠️ Mis Planes de Acción":
                     st.error(f"Reporte del Auditor: {plan['failure_description']}")
                     with st.form(f"fix_{plan['id']}"):
                         act = st.text_input("Acción Ejecutada (Obligatorio)")
+                        # Nota: En los planes de acción mantenemos el uploader nativo para subir fotos de galería.
                         corr_pic = st.file_uploader("Subir Foto de la Corrección", type=['jpg', 'jpeg', 'png'], key=f"up_{plan['id']}", accept_multiple_files=False)
                         
                         if st.form_submit_button("Subir y Enviar a Validación"):
@@ -703,10 +792,12 @@ elif menu == "🛠️ Mis Planes de Acción":
                                 with st.spinner('Comprimiendo y subiendo evidencia...'):
                                     file_name = f"agency_fix_plan_{plan['id']}_{random.randint(1000,9999)}.jpg"
                                     try:
+                                        from PIL import Image
                                         image = Image.open(corr_pic)
                                         if image.mode in ("RGBA", "P"): image = image.convert("RGB")
                                         image.thumbnail((1080, 1080), Image.Resampling.LANCZOS)
                                         
+                                        import io
                                         img_byte_arr = io.BytesIO()
                                         image.save(img_byte_arr, format='JPEG', quality=70)
                                         compressed_bytes = img_byte_arr.getvalue()
