@@ -40,80 +40,85 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# CUSTOM COMPONENT: FAST MOBILE CAMERA
+# CUSTOM COMPONENT: FAST MOBILE CAMERA (BIDIRECTIONAL)
 # ==========================================
-def fast_mobile_camera(key=None):
-    component_html = """
-    <html>
-      <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <script src="https://cdn.jsdelivr.net/npm/streamlit-component-lib@1.3.0/dist/streamlit.js"></script>
-        <style>
-            body { margin: 0; font-family: sans-serif; display: flex; align-items: center; justify-content: center; background: transparent; }
-            .cam-btn { 
-                background-color: #005ca9; color: white; padding: 10px 15px; 
-                border-radius: 6px; font-weight: bold; cursor: pointer; 
-                display: flex; align-items: center; gap: 8px; font-size: 14px;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: 100%; justify-content: center;
-            }
-            .cam-btn:active { background-color: #003f75; }
-        </style>
-      </head>
-      <body>
-        <label class="cam-btn">
-            📸 Tomar Foto Rápida
-            <input type="file" accept="image/*" capture="environment" id="cameraInput" style="display: none;">
-        </label>
+_fast_camera_html = """
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="https://cdn.jsdelivr.net/npm/streamlit-component-lib@1.3.0/dist/streamlit.js"></script>
+    <style>
+        body { margin: 0; font-family: sans-serif; display: flex; align-items: center; justify-content: center; background: transparent; }
+        .cam-btn { 
+            background-color: #005ca9; color: white; padding: 10px 15px; 
+            border-radius: 6px; font-weight: bold; cursor: pointer; 
+            display: flex; align-items: center; gap: 8px; font-size: 14px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: 100%; justify-content: center;
+        }
+        .cam-btn:active { background-color: #003f75; }
+    </style>
+  </head>
+  <body>
+    <label class="cam-btn">
+        📸 Tomar Foto Rápida
+        <input type="file" accept="image/*" capture="environment" id="cameraInput" style="display: none;">
+    </label>
+    
+    <script>
+      function init() { Streamlit.setFrameHeight(50); }
+      
+      document.getElementById('cameraInput').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
         
-        <script>
-          function init() { Streamlit.setFrameHeight(50); }
-          
-          document.getElementById('cameraInput').addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if (!file) return;
-            
-            const label = document.querySelector('.cam-btn');
-            label.innerHTML = "⏳ Comprimiendo...";
-            
-            const reader = new FileReader();
-            reader.onload = function(event) {
-                const img = new Image();
-                img.onload = function() {
-                    const canvas = document.createElement('canvas');
-                    const ctx = canvas.getContext('2d');
-                    
-                    const MAX_WIDTH = 1080;
-                    const MAX_HEIGHT = 1080;
-                    let width = img.width;
-                    let height = img.height;
+        const label = document.querySelector('.cam-btn');
+        label.innerHTML = "⏳ Comprimiendo...";
+        
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            const img = new Image();
+            img.onload = function() {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                
+                const MAX_WIDTH = 1080;
+                const MAX_HEIGHT = 1080;
+                let width = img.width;
+                let height = img.height;
 
-                    if (width > height) {
-                        if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
-                    } else {
-                        if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
-                    }
-                    
-                    canvas.width = width;
-                    canvas.height = height;
-                    ctx.drawImage(img, 0, 0, width, height);
-                    
-                    const base64Data = canvas.toDataURL('image/jpeg', 0.7); 
-                    
-                    label.innerHTML = "✅ Foto Capturada";
-                    label.style.backgroundColor = "#28a745";
-                    Streamlit.setComponentValue(base64Data);
+                if (width > height) {
+                    if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
+                } else {
+                    if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
                 }
-                img.src = event.target.result;
+                
+                canvas.width = width;
+                canvas.height = height;
+                ctx.drawImage(img, 0, 0, width, height);
+                
+                const base64Data = canvas.toDataURL('image/jpeg', 0.7); 
+                
+                label.innerHTML = "✅ Foto Capturada";
+                label.style.backgroundColor = "#28a745";
+                
+                // Enviar datos de vuelta a Python
+                Streamlit.setComponentValue(base64Data);
             }
-            reader.readAsDataURL(file);
-          });
-          
-          window.addEventListener('load', init);
-        </script>
-      </body>
-    </html>
-    """
-    return components.html(component_html, height=50, key=key)
+            img.src = event.target.result;
+        }
+        reader.readAsDataURL(file);
+      });
+      
+      window.addEventListener('load', init);
+    </script>
+  </body>
+</html>
+"""
+
+_fast_camera_func = components.declare_component("fast_mobile_camera", html=_fast_camera_html)
+
+def fast_mobile_camera(key=None):
+    return _fast_camera_func(key=key, default=None)
 
 # ==========================================
 # 2. SUPABASE INITIALIZATION
@@ -292,16 +297,24 @@ elif menu == "📋 Operaciones (Visión Red)":
         
         with st.expander("📥 Carga Masiva (Excel/CSV)"):
             st.info("Columnas requeridas: **item_code**, **category**, **sub_category**, **rigor_level**, **audit_question**")
+            
+            replace_catalog = st.checkbox("⚠️ Reemplazar catálogo existente (Borra las preguntas actuales antes de subir el nuevo archivo)")
+            
             uploaded_cat = st.file_uploader("Subir Archivo de Catálogo", type=["xlsx", "csv"])
             if uploaded_cat and st.button("Procesar Archivo Masivo", type="primary"):
                 try:
+                    if replace_catalog:
+                        existing_ids = [item['id'] for item in supabase.table("audit_master_catalog").select("id").execute().data]
+                        if existing_ids:
+                            supabase.table("audit_master_catalog").delete().in_("id", existing_ids).execute()
+
                     df_bulk = pd.read_csv(uploaded_cat) if uploaded_cat.name.endswith('.csv') else pd.read_excel(uploaded_cat)
                     records_to_insert = df_bulk[['item_code', 'category', 'sub_category', 'rigor_level', 'audit_question']].to_dict('records')
                     supabase.table("audit_master_catalog").insert(records_to_insert).execute()
-                    st.success(f"¡{len(records_to_insert)} ítems cargados!")
+                    st.success(f"¡{len(records_to_insert)} ítems cargados exitosamente!")
                     st.rerun()
                 except Exception as e:
-                    st.error(f"Error procesando archivo. Verifique que las 5 columnas estén presentes. Detalles: {e}")
+                    st.error(f"Error procesando archivo. Verifique que las 5 columnas estén presentes y bien escritas. Detalles: {e}")
 
         st.divider()
         with st.form("new_catalog_item"):
@@ -330,7 +343,6 @@ elif menu == "📋 Operaciones (Visión Red)":
             st.markdown("#### Modificar o Eliminar Ítems Existentes")
             df_cat = pd.DataFrame(catalog_data)
             
-            # Ensure sub_category column exists in dataframe even if all DB records are old/null
             if 'sub_category' not in df_cat.columns:
                 df_cat['sub_category'] = ""
                 
