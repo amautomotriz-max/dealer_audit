@@ -46,79 +46,42 @@ _fast_camera_html = """
 <!DOCTYPE html>
 <html>
   <head>
-    <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <script src="https://cdn.jsdelivr.net/npm/streamlit-component-lib@1.3.0/dist/streamlit.js"></script>
-    <style>
-        body { margin: 0; padding: 0; font-family: sans-serif; background: transparent; overflow: hidden; }
-        .cam-container {
-            position: relative;
-            width: 100%; height: 50px;
-            background-color: #005ca9; color: white;
-            border-radius: 6px; font-weight: bold; font-size: 14px;
-            display: flex; justify-content: center; align-items: center;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .cam-container span {
-            z-index: 1; 
-            pointer-events: none; /* Evita que el texto bloquee el toque */
-        }
-        /* El botón nativo cubre todo el espacio y es 100% invisible pero clickeable */
-        input[type="file"] {
-            position: absolute;
-            top: 0; left: 0; right: 0; bottom: 0;
-            width: 100%; height: 100%;
-            opacity: 0; cursor: pointer; z-index: 10;
-        }
-    </style>
   </head>
   <body>
-    <div class="cam-container" id="bg">
-        <span id="txt">📸 Seleccionar o Tomar Foto</span>
-        <input type="file" accept="image/*" id="cam">
-    </div>
-
+    <b style="font-family: sans-serif; color: #333;">Test Nativo de Cámara:</b><br><br>
+    <input type="file" accept="image/*" id="cam" style="font-size: 16px;">
+    
     <script>
-      function init() { Streamlit.setFrameHeight(60); }
-
+      function init() { Streamlit.setFrameHeight(100); }
       document.getElementById('cam').addEventListener('change', function(e) {
         const file = e.target.files[0];
         if (!file) return;
-
-        document.getElementById('txt').innerText = "⏳ Procesando...";
-        document.getElementById('bg').style.backgroundColor = "#ffc107";
-        document.getElementById('bg').style.color = "#000";
-
+        
+        document.body.innerHTML = "<b style='font-family: sans-serif; color: #ffc107;'>⏳ Comprimiendo en el teléfono...</b>";
+        
         const reader = new FileReader();
         reader.onload = function(event) {
             const img = new Image();
             img.onload = function() {
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
-                
-                // Límite seguro para evitar que el navegador móvil colapse
                 const MAX = 1080;
                 let w = img.width; let h = img.height;
-
                 if (w > h) { if (w > MAX) { h *= MAX / w; w = MAX; } }
                 else { if (h > MAX) { w *= MAX / h; h = MAX; } }
-
                 canvas.width = w; canvas.height = h;
                 ctx.drawImage(img, 0, 0, w, h);
-
                 const b64 = canvas.toDataURL('image/jpeg', 0.7);
-
-                document.getElementById('txt').innerText = "✅ Foto Capturada";
-                document.getElementById('bg').style.backgroundColor = "#28a745";
-                document.getElementById('bg').style.color = "#fff";
-
+                
+                document.body.innerHTML = "<b style='font-family: sans-serif; color: #28a745;'>✅ Foto Capturada Exitosamente</b>";
                 Streamlit.setComponentValue(b64);
             }
             img.src = event.target.result;
         }
         reader.readAsDataURL(file);
       });
-
       window.addEventListener('load', init);
     </script>
   </body>
